@@ -4,6 +4,7 @@ from pydantic import BaseModel
 app = FastAPI(title="Demi Backend")
 
 class ChatIn(BaseModel):
+    conversation_id: str | None = None
     user_text: str
     persona: str = "demi"
 
@@ -13,4 +14,8 @@ def health():
 
 @app.post("/chat")
 def chat(payload: ChatIn):
-    return {"assistant_text": f"[{payload.persona}] You said {payload.user_text}"}
+    cid = payload.conversation_id or "new"
+    return{
+        "conversation_id" : cid,
+        "assistant_text": f"[{payload.persona}] You Said: {payload.user_text}",
+    }
