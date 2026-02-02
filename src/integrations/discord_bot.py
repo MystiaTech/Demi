@@ -15,19 +15,20 @@ from discord.ext import commands, tasks
 from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
 from src.models.rambles import Ramble, RambleStore
+from src.autonomy.coordinator import AutonomyCoordinator
 
 
 # Emotion to Discord color mapping
 EMOTION_COLORS = {
-    "loneliness": discord.Color.purple(),      # 0x9370DB
-    "excitement": discord.Color.green(),       # 0x2ECC71
-    "frustration": discord.Color.red(),        # 0xE74C3C
-    "affection": discord.Color.magenta(),      # 0xFF1493 (hot pink)
-    "confidence": discord.Color.blue(),        # 0x3498DB
-    "curiosity": discord.Color.teal(),         # 0x1ABC9C (cyan)
-    "jealousy": discord.Color.orange(),        # 0xE67E22
+    "loneliness": discord.Color.purple(),  # 0x9370DB
+    "excitement": discord.Color.green(),  # 0x2ECC71
+    "frustration": discord.Color.red(),  # 0xE74C3C
+    "affection": discord.Color.magenta(),  # 0xFF1493 (hot pink)
+    "confidence": discord.Color.blue(),  # 0x3498DB
+    "curiosity": discord.Color.teal(),  # 0x1ABC9C (cyan)
+    "jealousy": discord.Color.orange(),  # 0xE67E22
     "vulnerability": discord.Color.magenta(),  # 0xD946EF
-    "defensiveness": discord.Color.dark_gray(),# 0x36393B
+    "defensiveness": discord.Color.dark_gray(),  # 0x36393B
 }
 
 
@@ -55,8 +56,7 @@ def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Co
 
 
 def format_response_as_embed(
-    response_dict: Dict,
-    user_name: str = "User"
+    response_dict: Dict, user_name: str = "User"
 ) -> discord.Embed:
     """
     Format LLM response as Discord embed with emotion visualization.
@@ -82,7 +82,7 @@ def format_response_as_embed(
     embed = discord.Embed(
         title=f"Demi's Response",
         description=content[:2000],  # Discord 2000 char limit per embed description
-        color=color
+        color=color,
     )
 
     # Add emotion indicator as footer
@@ -104,9 +104,7 @@ def format_response_as_embed(
         if strong_emotions and len(strong_emotions) <= 3:
             emotion_summary = " | ".join(strong_emotions)
             embed.add_field(
-                name="Emotional Context",
-                value=emotion_summary,
-                inline=False
+                name="Emotional Context", value=emotion_summary, inline=False
             )
 
     return embed
@@ -115,7 +113,7 @@ def format_response_as_embed(
 def should_generate_ramble(
     emotion_state: Dict[str, float],
     last_ramble_time: Optional[datetime] = None,
-    min_interval_minutes: int = 60
+    min_interval_minutes: int = 60,
 ) -> tuple[bool, Optional[str]]:
     """
     Decide if Demi should post a ramble now.
@@ -139,7 +137,9 @@ def should_generate_ramble(
 
     # Check if enough time since last ramble
     if last_ramble_time:
-        if datetime.now(UTC) - last_ramble_time < timedelta(minutes=min_interval_minutes):
+        if datetime.now(UTC) - last_ramble_time < timedelta(
+            minutes=min_interval_minutes
+        ):
             return False, None
 
     # Check emotional triggers
@@ -187,17 +187,18 @@ class RambleTask:
         try:
             # Get current emotion state
             from src.emotion.persistence import EmotionPersistence
+
             emotion_persist = EmotionPersistence()  # Uses default DB path
             emotion_state_obj = emotion_persist.load_latest_state()
 
             # Convert to dict for decision logic
-            emotion_state = emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
+            emotion_state = (
+                emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
+            )
 
             # Check if should ramble
             should_ramble, trigger = should_generate_ramble(
-                emotion_state,
-                self.last_ramble_time,
-                min_interval_minutes=60
+                emotion_state, self.last_ramble_time, min_interval_minutes=60
             )
 
             if not should_ramble:
@@ -210,9 +211,7 @@ class RambleTask:
             prompt_addendum = self._get_ramble_prompt(trigger, emotion_state_obj)
 
             # Format as LLM messages
-            messages = [
-                {"role": "user", "content": prompt_addendum}
-            ]
+            messages = [{"role": "user", "content": prompt_addendum}]
 
             response = await self.conductor.request_inference(messages)
 
@@ -226,10 +225,7 @@ class RambleTask:
             channel = self.bot.get_channel(self.ramble_channel_id)
             if channel:
                 # Format as embed with ramble indication
-                response_dict = {
-                    "content": content,
-                    "emotion_state": emotion_state
-                }
+                response_dict = {"content": content, "emotion_state": emotion_state}
                 embed = format_response_as_embed(response_dict, "Demi")
                 embed.title = "💭 Demi's Thoughts"  # Visual ramble indicator
 
@@ -243,7 +239,7 @@ class RambleTask:
                     content=content,
                     emotion_state=emotion_state,
                     trigger=trigger,
-                    created_at=datetime.now(UTC)
+                    created_at=datetime.now(UTC),
                 )
                 await self.ramble_store.save(ramble)
                 self.last_ramble_time = datetime.now(UTC)
@@ -304,7 +300,7 @@ class DiscordBot(BasePlatform):
         self.conductor = None
         self._initialized = False
         self._bot_task: Optional[asyncio.Task] = None
-        self.ramble_task: Optional[RambleTask] = None
+        self.autonomy_coordinator: Optional[AutonomyCoordinator] = None
 
     async def initialize(self, conductor) -> bool:
         """Initialize Discord bot with intents and event handlers.
@@ -349,7 +345,7 @@ class DiscordBot(BasePlatform):
                 self.logger.info(
                     f"Discord bot connected as {self.bot.user}",
                     bot_id=self.bot.user.id,
-                    guild_count=len(self.bot.guilds)
+                    guild_count=len(self.bot.guilds),
                 )
                 self._status = "online"
 
@@ -380,7 +376,10 @@ class DiscordBot(BasePlatform):
                 content = message.content
                 if is_mention:
                     # Strip bot mention from content
-                    for mention_str in [f"<@{self.bot.user.id}>", f"<@!{self.bot.user.id}>"]:
+                    for mention_str in [
+                        f"<@{self.bot.user.id}>",
+                        f"<@!{self.bot.user.id}>",
+                    ]:
                         content = content.replace(mention_str, "").strip()
 
                 # Log interaction
@@ -389,7 +388,7 @@ class DiscordBot(BasePlatform):
                     user_id=user_id,
                     guild_id=guild_id,
                     is_dm=is_dm,
-                    content_length=len(content)
+                    content_length=len(content),
                 )
 
                 # Skip empty messages after mention removal
@@ -401,9 +400,7 @@ class DiscordBot(BasePlatform):
                     async with message.channel.typing():
                         # Route through Conductor
                         # Format message for LLM (simple format for now, will be enhanced in future plans)
-                        messages = [
-                            {"role": "user", "content": content}
-                        ]
+                        messages = [{"role": "user", "content": content}]
 
                         response = await self.conductor.request_inference(messages)
 
@@ -412,36 +409,44 @@ class DiscordBot(BasePlatform):
                         # Handle both dict and string responses (backward compatibility)
                         if isinstance(response, dict):
                             # New format: dict with content and emotion_state
-                            embed = format_response_as_embed(response, str(message.author))
+                            embed = format_response_as_embed(
+                                response, str(message.author)
+                            )
                             await message.reply(embed=embed, mention_author=False)
                             response_text = response.get("content", "")
                         else:
                             # Legacy format: plain string
                             # Wrap in dict for embed formatting
                             response_dict = {"content": response, "emotion_state": {}}
-                            embed = format_response_as_embed(response_dict, str(message.author))
+                            embed = format_response_as_embed(
+                                response_dict, str(message.author)
+                            )
                             await message.reply(embed=embed, mention_author=False)
                             response_text = response
                     except Exception as embed_error:
                         # Fallback to plain text if embed formatting fails
                         self.logger.warning(
                             f"Embed formatting failed, using plain text: {embed_error}",
-                            user_id=user_id
+                            user_id=user_id,
                         )
-                        response_text = response.get("content", response) if isinstance(response, dict) else response
+                        response_text = (
+                            response.get("content", response)
+                            if isinstance(response, dict)
+                            else response
+                        )
                         await message.reply(response_text, mention_author=False)
 
                     self.logger.info(
                         "Discord response sent",
                         user_id=user_id,
-                        response_length=len(response_text)
+                        response_length=len(response_text),
                     )
 
                 except Exception as e:
                     self.logger.error(
                         f"Discord message handling error: {e}",
                         user_id=user_id,
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     # Send error message to user
                     error_msg = "Oops, something went wrong. Try again in a moment."
@@ -450,16 +455,18 @@ class DiscordBot(BasePlatform):
             # Log successful initialization
             self.logger.info(
                 "Discord bot initialized",
-                intents=["message_content", "guilds", "direct_messages"]
+                intents=["message_content", "guilds", "direct_messages"],
             )
 
             # Start bot in background (non-blocking)
             self._bot_task = asyncio.create_task(self.bot.start(self.token))
 
-            # Initialize ramble task
-            ramble_db_path = os.getenv("DEMI_DB_PATH", "~/.demi/emotions.db")
-            ramble_store = RambleStore(ramble_db_path)
-            self.ramble_task = RambleTask(self.bot, conductor, ramble_store, self.logger)
+            # Get autonomy coordinator from conductor
+            if hasattr(conductor, "autonomy_coordinator"):
+                self.autonomy_coordinator = conductor.autonomy_coordinator
+                self.logger.info("Connected to unified autonomy system")
+            else:
+                self.logger.warning("Autonomy coordinator not available in conductor")
 
             self._initialized = True
             self._status = "initializing"
@@ -479,9 +486,7 @@ class DiscordBot(BasePlatform):
         try:
             self.logger.info("Discord bot shutting down...")
 
-            # Stop ramble task if running
-            if self.ramble_task:
-                self.ramble_task.stop()
+            # Autonomy system is managed by conductor, no need to stop here
 
             if self.bot and not self.bot.is_closed():
                 await self.bot.close()
@@ -512,17 +517,13 @@ class DiscordBot(BasePlatform):
             status = "healthy" if is_ready else "unhealthy"
             error_message = None if is_ready else "Bot not connected to Discord"
 
-            self.logger.debug(
-                "Discord health check",
-                status=status,
-                is_ready=is_ready
-            )
+            self.logger.debug("Discord health check", status=status, is_ready=is_ready)
 
             return PluginHealth(
                 status=status,
                 response_time_ms=0.0,  # Discord doesn't provide latency in is_ready()
                 last_check=datetime.now(),
-                error_message=error_message
+                error_message=error_message,
             )
 
         except Exception as e:
@@ -531,7 +532,7 @@ class DiscordBot(BasePlatform):
                 status="unhealthy",
                 response_time_ms=0.0,
                 last_check=datetime.now(),
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def handle_request(self, request: dict) -> dict:
@@ -547,5 +548,45 @@ class DiscordBot(BasePlatform):
         # for Discord message routing (handled via on_message event)
         return {
             "status": "success",
-            "message": "Discord bot uses event-driven message routing"
+            "message": "Discord bot uses event-driven message routing",
         }
+
+    def send_message(self, content: str, channel_id: str) -> bool:
+        """
+        Send message through Discord bot for unified autonomy system.
+
+        Args:
+            content: Message content to send
+            channel_id: Discord channel ID
+
+        Returns:
+            True if message sent successfully
+        """
+        try:
+            if not self.bot or not self.bot.is_ready():
+                return False
+
+            # Get channel
+            channel = self.bot.get_channel(int(channel_id))
+            if not channel:
+                self.logger.error(f"Discord channel {channel_id} not found")
+                return False
+
+            # Create embed for autonomous message
+            response_dict = {
+                "content": content,
+                "emotion_state": {},  # Will be populated by autonomy system
+            }
+            embed = format_response_as_embed(response_dict, "Demi")
+            embed.title = (
+                "💭 Demi's Thoughts"  # Visual indicator for autonomous messages
+            )
+
+            # Send message
+            asyncio.create_task(channel.send(embed=embed))
+            self.logger.info(f"Autonomous Discord message sent to channel {channel_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to send autonomous Discord message: {e}")
+            return False
