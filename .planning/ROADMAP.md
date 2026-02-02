@@ -208,7 +208,10 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 
 **Goal:** Connect Demi to Discord as a bot. Implement mentions, DMs, conversation context, and ramble posting.
 
-**Status:** Pending
+**Status:** Planning ⏳
+**Plans Created:** 3 (Bot Foundation, Response Formatting, Ramble System)
+
+**Duration:** ~4 hours (estimated)
 
 **Why This Phase:** Discord is Demi's primary platform. She needs to respond to mentions in servers and DMs, maintain multi-turn conversations, and post rambles to dedicated channels.
 
@@ -216,19 +219,46 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 
 **Dependencies:** Phase 1, 2, 3, 4 (all foundation complete)
 
+**Technical Deliverables:**
+- DiscordBot platform plugin with discord.py
+- Message handlers (mentions, DMs, reactions)
+- Embed formatting with emotion-based colors
+- Ramble system (spontaneous messages)
+- Database persistence for interactions
+
+**Plans:**
+- [ ] 05-01-PLAN.md — Discord Bot Foundation (Message Routing)
+- [ ] 05-02-PLAN.md — Response Formatting & Embed System
+- [ ] 05-03-PLAN.md — Ramble Posting & Autonomy
+
 ---
 
 ## Phase 6: Android Integration
 
-**Goal:** Build API and mobile client for Android bidirectional messaging.
+**Goal:** Build FastAPI backend and mobile client for Android bidirectional messaging.
 
-**Status:** Pending
+**Status:** Planning ⏳
+**Plans Created:** 3 (Authentication, Messaging, Notifications)
+
+**Duration:** ~4 hours (estimated)
 
 **Why This Phase:** Android enables Demi to initiate contact (check-ins, "you ignored me" messages) and receive messages on mobile. Can run parallel with Phase 5.
 
 **Requirements Mapped:** ANDR-01, ANDR-02, ANDR-03, ANDR-04 (4)
 
 **Dependencies:** Phase 1, 2, 3, 4 (all foundation complete)
+
+**Technical Deliverables:**
+- FastAPI REST API backend
+- User authentication (JWT tokens)
+- Message send/receive endpoints
+- Notification polling system
+- Message persistence
+
+**Plans:**
+- [ ] 06-01-PLAN.md — Authentication & User Management (JWT)
+- [ ] 06-02-PLAN.md — Messaging Endpoints (Send/Receive)
+- [ ] 06-03-PLAN.md — Notifications & Load Testing
 
 **Note:** Can be parallelized with Phase 5
 
@@ -295,14 +325,14 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 | 1 | STUB-01, STUB-02, STUB-03, STUB-04 | 4 | ✅ |
 | 2 | COND-01, COND-02, COND-03, COND-04 | 4 | ✅ |
 | 3 | EMOT-01-05, PERS-01-03 | 8 | ✅ |
-| 4 | LLM-01-04, AUTO-01 | 5 | ⏳ Planning |
-| 5 | DISC-01-05, AUTO-02 | 6 | Pending |
-| 6 | ANDR-01-04 | 4 | Pending |
+| 4 | LLM-01-04, AUTO-01 | 5 | ✅ |
+| 5 | DISC-01-05, AUTO-02 | 6 | ⏳ Planning |
+| 6 | ANDR-01-04 | 4 | ⏳ Planning |
 | 7 | RAMB-01-05, AUTO-03-05 | 8 | Pending |
 | 8 | LLM-02 (voice) | 1 | Pending |
 | 9 | HEALTH-01-04 | 4 | Pending |
 | 10 | Documentation | — | Pending |
-| **Total** | | **40** | 12/40 ✅ |
+| **Total** | | **40** | 17/40 (3 phases complete, 2 planning) |
 
 ---
 
