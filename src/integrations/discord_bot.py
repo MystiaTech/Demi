@@ -5,14 +5,16 @@ Provides Discord presence, message routing, and bidirectional communication.
 
 import os
 import asyncio
+import uuid
 from typing import Optional, Dict
+from datetime import datetime, timedelta, UTC
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
-from datetime import datetime
+from src.models.rambles import Ramble, RambleStore
 
 
 # Emotion to Discord color mapping
@@ -110,6 +112,179 @@ def format_response_as_embed(
     return embed
 
 
+def should_generate_ramble(
+    emotion_state: Dict[str, float],
+    last_ramble_time: Optional[datetime] = None,
+    min_interval_minutes: int = 60
+) -> tuple[bool, Optional[str]]:
+    """
+    Decide if Demi should post a ramble now.
+
+    Rules:
+    - Loneliness > 0.7 → ramble (missing interaction)
+    - Excitement > 0.8 → ramble (feeling social)
+    - Frustration > 0.6 → ramble (venting)
+    - Don't ramble more than every 60 minutes (prevents spam)
+
+    Args:
+        emotion_state: Dict of emotion values (e.g., {"loneliness": 0.8})
+        last_ramble_time: When last ramble was posted (for interval check)
+        min_interval_minutes: Minimum minutes between rambles (default 60)
+
+    Returns:
+        (should_ramble: bool, trigger: Optional[str])
+    """
+    if not emotion_state:
+        return False, None
+
+    # Check if enough time since last ramble
+    if last_ramble_time:
+        if datetime.now(UTC) - last_ramble_time < timedelta(minutes=min_interval_minutes):
+            return False, None
+
+    # Check emotional triggers
+    if emotion_state.get("loneliness", 0) > 0.7:
+        return True, "loneliness"
+
+    if emotion_state.get("excitement", 0) > 0.8:
+        return True, "excitement"
+
+    if emotion_state.get("frustration", 0) > 0.6:
+        return True, "frustration"
+
+    return False, None
+
+
+class RambleTask:
+    """Scheduled task for posting spontaneous rambles"""
+
+    def __init__(self, bot: commands.Bot, conductor, ramble_store: RambleStore, logger):
+        """Initialize ramble task.
+
+        Args:
+            bot: Discord bot instance
+            conductor: Conductor instance for LLM inference
+            ramble_store: RambleStore for persistence
+            logger: Logger instance
+        """
+        self.bot = bot
+        self.conductor = conductor
+        self.ramble_store = ramble_store
+        self.logger = logger
+        self.last_ramble_time = None
+        self.ramble_channel_id = int(os.getenv("DISCORD_RAMBLE_CHANNEL_ID", "0"))
+
+        if self.ramble_channel_id:
+            self.ramble_loop.start()
+        else:
+            self.logger.warning(
+                "DISCORD_RAMBLE_CHANNEL_ID not set - ramble posting disabled"
+            )
+
+    @tasks.loop(minutes=15)  # Check every 15 minutes
+    async def ramble_loop(self):
+        """Check if Demi should ramble, generate and post if so"""
+        try:
+            # Get current emotion state
+            from src.emotion.persistence import EmotionPersistence
+            emotion_persist = EmotionPersistence()  # Uses default DB path
+            emotion_state_obj = emotion_persist.load_latest_state()
+
+            # Convert to dict for decision logic
+            emotion_state = emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
+
+            # Check if should ramble
+            should_ramble, trigger = should_generate_ramble(
+                emotion_state,
+                self.last_ramble_time,
+                min_interval_minutes=60
+            )
+
+            if not should_ramble:
+                self.logger.debug("No ramble trigger met")
+                return
+
+            self.logger.info(f"Generating ramble (trigger: {trigger})")
+
+            # Generate ramble content via LLM pipeline
+            prompt_addendum = self._get_ramble_prompt(trigger, emotion_state_obj)
+
+            # Format as LLM messages
+            messages = [
+                {"role": "user", "content": prompt_addendum}
+            ]
+
+            response = await self.conductor.request_inference(messages)
+
+            # Extract content from response (handle both dict and string)
+            if isinstance(response, dict):
+                content = response.get("content", "")
+            else:
+                content = response
+
+            # Post to ramble channel
+            channel = self.bot.get_channel(self.ramble_channel_id)
+            if channel:
+                # Format as embed with ramble indication
+                response_dict = {
+                    "content": content,
+                    "emotion_state": emotion_state
+                }
+                embed = format_response_as_embed(response_dict, "Demi")
+                embed.title = "💭 Demi's Thoughts"  # Visual ramble indicator
+
+                await channel.send(embed=embed)
+                self.logger.info(f"Ramble posted: {len(content)} chars")
+
+                # Store ramble
+                ramble = Ramble(
+                    ramble_id=str(uuid.uuid4()),
+                    channel_id=str(self.ramble_channel_id),
+                    content=content,
+                    emotion_state=emotion_state,
+                    trigger=trigger,
+                    created_at=datetime.now(UTC)
+                )
+                await self.ramble_store.save(ramble)
+                self.last_ramble_time = datetime.now(UTC)
+            else:
+                self.logger.error(f"Ramble channel {self.ramble_channel_id} not found")
+
+        except Exception as e:
+            self.logger.error(f"Ramble generation failed: {e}")
+
+    @ramble_loop.before_loop
+    async def before_ramble(self):
+        """Wait for bot to be ready before starting ramble loop"""
+        await self.bot.wait_until_ready()
+
+    def _get_ramble_prompt(self, trigger: str, emotion_state) -> str:
+        """
+        Get the prompt to add to LLM for ramble generation.
+        Different prompts for different triggers.
+
+        Args:
+            trigger: Trigger type ("loneliness", "excitement", "frustration")
+            emotion_state: EmotionalState object (unused for now)
+
+        Returns:
+            Prompt string for LLM
+        """
+        if trigger == "loneliness":
+            return "I'm feeling a bit lonely. What's on my mind? (Generate a spontaneous, personal thought in first person, 1-2 sentences)"
+        elif trigger == "excitement":
+            return "I'm excited about something. What would I express right now? (Generate a spontaneous, enthusiastic thought in first person, 1-2 sentences)"
+        elif trigger == "frustration":
+            return "I'm frustrated. What would I vent about? (Generate a spontaneous, honest complaint in first person, 1-2 sentences)"
+        else:
+            return "What's on my mind? (Generate a spontaneous thought in first person, 1-2 sentences)"
+
+    def stop(self):
+        """Stop ramble loop"""
+        if self.ramble_loop.is_running():
+            self.ramble_loop.stop()
+
+
 class DiscordBot(BasePlatform):
     """Discord bot platform integration.
 
@@ -129,6 +304,7 @@ class DiscordBot(BasePlatform):
         self.conductor = None
         self._initialized = False
         self._bot_task: Optional[asyncio.Task] = None
+        self.ramble_task: Optional[RambleTask] = None
 
     async def initialize(self, conductor) -> bool:
         """Initialize Discord bot with intents and event handlers.
@@ -280,6 +456,11 @@ class DiscordBot(BasePlatform):
             # Start bot in background (non-blocking)
             self._bot_task = asyncio.create_task(self.bot.start(self.token))
 
+            # Initialize ramble task
+            ramble_db_path = os.getenv("DEMI_DB_PATH", "~/.demi/emotions.db")
+            ramble_store = RambleStore(ramble_db_path)
+            self.ramble_task = RambleTask(self.bot, conductor, ramble_store, self.logger)
+
             self._initialized = True
             self._status = "initializing"
 
@@ -297,6 +478,10 @@ class DiscordBot(BasePlatform):
         """Shutdown Discord bot gracefully."""
         try:
             self.logger.info("Discord bot shutting down...")
+
+            # Stop ramble task if running
+            if self.ramble_task:
+                self.ramble_task.stop()
 
             if self.bot and not self.bot.is_closed():
                 await self.bot.close()
