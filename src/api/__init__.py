@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.auth import router as auth_router
+from src.api.websocket import router as websocket_router
 from src.api.migrations import run_all_migrations
 from src.core.logger import DemiLogger
 
@@ -32,6 +33,9 @@ def create_app() -> FastAPI:
 
     # Include auth router
     app.include_router(auth_router)
+
+    # Include websocket router
+    app.include_router(websocket_router)
 
     # Health check
     @app.get("/api/v1/status")
