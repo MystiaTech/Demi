@@ -1,0 +1,639 @@
+---
+phase: 06-android-integration
+plan: 02
+type: execute
+wave: 2
+depends_on: ["06-01"]
+files_modified:
+  - src/api/messages.py
+  - src/api/models.py
+autonomous: true
+
+must_haves:
+  truths:
+    - "POST /api/v1/messages/send with JWT token routes to Conductor and returns LLM response"
+    - "GET /api/v1/messages/receive with JWT token returns unread messages since last poll"
+    - "Message response includes emotion_state indicating Demi's mood"
+    - "Messages persist in database with direction (sent/received)"
+  artifacts:
+    - path: "src/api/messages.py"
+      provides: "Message send and receive endpoints"
+      exports: ["router"]
+    - path: "src/api/models.py"
+      provides: "Message request/response schemas"
+      exports: ["SendMessageRequest", "MessageResponse"]
+  key_links:
+    - from: "src/api/messages.py"
+      to: "src/conductor/orchestrator.py"
+      via: "conductor.request_inference(platform='android')"
+      pattern: "conductor\\.request_inference"
+    - from: "src/api/messages.py"
+      to: "src/models/emotional_state.py"
+      via: "emotion_state in message response"
+      pattern: "EmotionalState|emotion_state"
+
+---
+
+<objective>
+Create messaging endpoints that enable Android clients to send messages to Demi and receive responses through the same LLM pipeline as Discord. Messages are persisted with emotional state for conversation history.
+
+Purpose: Android client needs bidirectional messaging (send/receive) with Demi. Responses flow through LLM pipeline with emotional modulation, just like Discord messages.
+
+Output: /api/v1/messages/send and /api/v1/messages/receive endpoints, message persistence, polling loop support.
+</objective>
+
+<execution_context>
+@~/.opencode/get-shit-done/workflows/execute-plan.md
+@.planning/phases/06-android-integration/06-DISCOVERY.md
+</execution_context>
+
+<context>
+@.planning/phases/06-android-integration/06-01-SUMMARY.md
+@.planning/phases/04-llm-integration/04-04-SUMMARY.md
+@src/conductor/orchestrator.py
+@src/models/emotional_state.py
+</context>
+
+<tasks>
+
+<task type="auto">
+  <name>Task 1: Create Message model and database schema</name>
+  <files>src/api/models.py</files>
+  <action>
+Add to `src/api/models.py`:
+
+```python
+from typing import Dict, List, Optional
+
+@dataclass
+class AndroidMessage:
+    """Message in Android conversation"""
+    message_id: str
+    user_id: str
+    direction: str  # "sent" (user→demi) or "received" (demi→user)
+    content: str
+    emotion_state: Optional[Dict[str, float]] = None
+    is_read: bool = False
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    
+    def to_dict(self) -> dict:
+        return {
+            "message_id": self.message_id,
+            "user_id": self.user_id,
+            "direction": self.direction,
+            "content": self.content,
+            "emotion_state": self.emotion_state,
+            "is_read": self.is_read,
+            "created_at": self.created_at.isoformat()
+        }
+
+# Request/Response schemas
+class SendMessageRequest(BaseModel):
+    """Send message to Demi"""
+    content: str
+    
+    class Config:
+        example = {"content": "Hey, how are you doing?"}
+
+class MessageResponse(BaseModel):
+    """Message response from Demi"""
+    message_id: str
+    content: str
+    direction: str  # "received"
+    emotion_state: Optional[Dict[str, float]]
+    created_at: str
+    
+    class Config:
+        example = {
+            "message_id": "msg-5678",
+            "content": "Doing good, you know, the usual...",
+            "direction": "received",
+            "emotion_state": {"excitement": 0.6, "affection": 0.4},
+            "created_at": "2026-02-02T15:30:05Z"
+        }
+
+class ConversationResponse(BaseModel):
+    """Multiple messages response"""
+    messages: List[MessageResponse]
+    unread_count: int
+    has_more: bool
+    
+    class Config:
+        example = {
+            "messages": [
+                {
+                    "message_id": "msg-1234",
+                    "content": "Hey!",
+                    "direction": "sent",
+                    "emotion_state": None,
+                    "created_at": "2026-02-02T15:29:00Z"
+                },
+                {
+                    "message_id": "msg-5678",
+                    "content": "Yo, what's up?",
+                    "direction": "received",
+                    "emotion_state": {"excitement": 0.7},
+                    "created_at": "2026-02-02T15:29:05Z"
+                }
+            ],
+            "unread_count": 0,
+            "has_more": False
+        }
+```
+
+Create migration for android_messages table:
+
+```python
+# In src/api/migrations.py, add:
+
+def create_android_messages_table():
+    """Create android_messages table"""
+    db_path = os.getenv("DATABASE_URL", "~/.demi/demi.db").replace("sqlite:///", "")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS android_messages (
+            message_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            content TEXT NOT NULL,
+            emotion_state JSON,
+            is_read BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+        """)
+        # Index for efficient polling
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_android_messages_user_read 
+        ON android_messages(user_id, is_read, created_at DESC)
+        """)
+        conn.commit()
+```
+
+Call in startup:
+```python
+# In __init__.py startup event:
+from src.api.migrations import create_android_messages_table
+create_android_messages_table()
+```
+  </action>
+  <verify>
+1. Models added: `grep -n "class AndroidMessage\|class SendMessageRequest\|class MessageResponse" src/api/models.py`
+2. Migration created: `grep -n "def create_android_messages_table" src/api/migrations.py`
+3. Import check: `python3 -c "from src.api.models import AndroidMessage, MessageResponse; print('OK')"`
+  </verify>
+  <done>
+- AndroidMessage dataclass created (user_id, direction, content, emotion_state, is_read)
+- SendMessageRequest schema (content)
+- MessageResponse schema (message_id, content, direction, emotion_state, created_at)
+- ConversationResponse schema (messages array, unread_count, has_more)
+- android_messages table migration
+- Index for efficient polling queries
+- Ready for Task 2 (endpoints)
+  </done>
+</task>
+
+<task type="auto">
+  <name>Task 2: Implement send and receive message endpoints</name>
+  <files>src/api/messages.py</files>
+  <action>
+Create `src/api/messages.py`:
+
+```python
+from fastapi import APIRouter, HTTPException, Depends, status
+from datetime import datetime
+import uuid
+import json
+import sqlite3
+import os
+from typing import Optional
+
+from src.api.models import SendMessageRequest, MessageResponse, ConversationResponse
+from src.api.auth import get_current_user
+from src.core.logger import get_logger
+from src.conductor.orchestrator import Conductor  # Conductor singleton
+
+router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
+logger = get_logger()
+DB_PATH = os.getenv("DATABASE_URL", "~/.demi/demi.db").replace("sqlite:///", "")
+
+# Get Conductor instance
+conductor = None
+
+async def get_conductor() -> Conductor:
+    """Dependency to get Conductor instance"""
+    global conductor
+    if conductor is None:
+        # Import and initialize if needed
+        from src.conductor.orchestrator import get_conductor_instance
+        conductor = get_conductor_instance()
+    return conductor
+
+async def store_message(
+    user_id: str,
+    direction: str,
+    content: str,
+    emotion_state: Optional[dict] = None
+) -> str:
+    """Store message in database, return message_id"""
+    message_id = str(uuid.uuid4())
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+        INSERT INTO android_messages
+        (message_id, user_id, direction, content, emotion_state, created_at, is_read)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            message_id,
+            user_id,
+            direction,
+            content,
+            json.dumps(emotion_state) if emotion_state else None,
+            datetime.utcnow().isoformat(),
+            1 if direction == "sent" else 0  # Mark sent as read
+        ))
+        conn.commit()
+    
+    return message_id
+
+async def get_message(message_id: str) -> Optional[dict]:
+    """Retrieve single message"""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM android_messages WHERE message_id = ?",
+            (message_id,)
+        ).fetchone()
+    
+    if not row:
+        return None
+    
+    return dict(row)
+
+@router.post("/send", response_model=MessageResponse)
+async def send_message(
+    req: SendMessageRequest,
+    current_user: dict = Depends(get_current_user),
+    conductor_instance: Conductor = Depends(get_conductor)
+):
+    """
+    Send message to Demi via LLM pipeline.
+    
+    Flow:
+    1. Store sent message in database
+    2. Route through Conductor.request_inference()
+    3. Get response from LLM
+    4. Store received response in database
+    5. Return response to Android client
+    """
+    user_id = current_user["user_id"]
+    
+    if not req.content or len(req.content.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Message content cannot be empty")
+    
+    if len(req.content) > 5000:
+        raise HTTPException(status_code=400, detail="Message too long (max 5000 chars)")
+    
+    # Store user's message
+    user_message_id = await store_message(
+        user_id=user_id,
+        direction="sent",
+        content=req.content
+    )
+    logger.info(f"Android message received from {user_id}")
+    
+    try:
+        # Route through LLM pipeline
+        response = await conductor_instance.request_inference(
+            platform="android",
+            user_id=user_id,
+            content=req.content,
+            context={
+                "source": "android",
+                "client_message_id": user_message_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        # Store Demi's response
+        emotion_state = response.get("emotion_state", {})
+        demi_message_id = await store_message(
+            user_id=user_id,
+            direction="received",
+            content=response.get("content", "Error generating response"),
+            emotion_state=emotion_state
+        )
+        
+        logger.info(f"Android response sent to {user_id}")
+        
+        return MessageResponse(
+            message_id=demi_message_id,
+            content=response.get("content", ""),
+            direction="received",
+            emotion_state=emotion_state,
+            created_at=datetime.utcnow().isoformat()
+        )
+    
+    except Exception as e:
+        logger.error(f"Android message handling error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error processing message. Please try again."
+        )
+
+@router.get("/receive", response_model=ConversationResponse)
+async def receive_messages(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Poll for unread messages (and recent message history).
+    
+    Returns last 50 messages (or limit), marks received messages as read.
+    """
+    user_id = current_user["user_id"]
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        
+        # Get recent messages (unread + recent read)
+        rows = conn.execute("""
+        SELECT * FROM android_messages
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """, (user_id, limit)).fetchall()
+        
+        # Mark unread received messages as read
+        conn.execute("""
+        UPDATE android_messages
+        SET is_read = 1
+        WHERE user_id = ? AND direction = 'received' AND is_read = 0
+        """, (user_id,))
+        conn.commit()
+    
+    # Convert to MessageResponse (reverse order for chronological)
+    messages = []
+    unread_count = 0
+    
+    for row in reversed(rows):
+        emotion_state = None
+        if row["emotion_state"]:
+            emotion_state = json.loads(row["emotion_state"])
+        
+        msg = MessageResponse(
+            message_id=row["message_id"],
+            content=row["content"],
+            direction=row["direction"],
+            emotion_state=emotion_state,
+            created_at=row["created_at"]
+        )
+        messages.append(msg)
+        
+        # Count unread messages (should be 0 after above update, but check)
+        if not row["is_read"] and row["direction"] == "received":
+            unread_count += 1
+    
+    return ConversationResponse(
+        messages=messages,
+        unread_count=unread_count,
+        has_more=len(messages) >= limit
+    )
+
+@router.get("/history", response_model=ConversationResponse)
+async def get_conversation_history(
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get full conversation history (paginated).
+    Useful for Android app's "load more" feature.
+    """
+    user_id = current_user["user_id"]
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        
+        rows = conn.execute("""
+        SELECT * FROM android_messages
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+        """, (user_id, limit, offset)).fetchall()
+    
+    messages = []
+    for row in reversed(rows):
+        emotion_state = None
+        if row["emotion_state"]:
+            emotion_state = json.loads(row["emotion_state"])
+        
+        msg = MessageResponse(
+            message_id=row["message_id"],
+            content=row["content"],
+            direction=row["direction"],
+            emotion_state=emotion_state,
+            created_at=row["created_at"]
+        )
+        messages.append(msg)
+    
+    return ConversationResponse(
+        messages=messages,
+        unread_count=0,
+        has_more=len(messages) >= limit
+    )
+```
+
+Update `src/api/__init__.py` to include messages router:
+
+```python
+# In create_app():
+from src.api.messages import router as messages_router
+app.include_router(messages_router)
+```
+  </action>
+  <verify>
+1. Syntax check: `python3 -m py_compile src/api/messages.py`
+2. Endpoints verify:
+   - `grep "def send_message\|def receive_messages\|def get_conversation_history" src/api/messages.py`
+3. Import check: `python3 -c "from src.api.messages import router; print('OK')"`
+4. Router inclusion: `grep "messages_router" src/api/__init__.py`
+  </verify>
+  <done>
+- POST /api/v1/messages/send endpoint implemented
+- Message routing through Conductor.request_inference()
+- Message persistence (sent + received)
+- GET /api/v1/messages/receive endpoint (polling endpoint)
+- GET /api/v1/messages/history endpoint (conversation history with pagination)
+- Unread message tracking
+- Emotion state included in responses
+- All endpoints require JWT authentication
+- Ready for Plan 03 (testing and load verification)
+  </done>
+</task>
+
+<task type="auto">
+  <name>Task 3: Add endpoint tests and rate limiting</name>
+  <files>src/api/messages.py</files>
+  <action>
+Create `tests/test_android_messages.py`:
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from src.api import create_app
+
+client = TestClient(create_app())
+
+@pytest.fixture
+def auth_token():
+    """Register and login to get auth token"""
+    # Register user
+    response = client.post("/api/v1/auth/register", json={
+        "email": "test@example.com",
+        "password": "TestPass123"
+    })
+    token = response.json()["access_token"]
+    return f"Bearer {token}"
+
+class TestMessages:
+    def test_send_message_unauthorized(self):
+        """Sending without token should fail"""
+        response = client.post("/api/v1/messages/send", json={
+            "content": "Hello"
+        })
+        assert response.status_code == 403
+    
+    def test_send_message_success(self, auth_token):
+        """Send valid message should return response"""
+        response = client.post(
+            "/api/v1/messages/send",
+            json={"content": "What time is it?"},
+            headers={"Authorization": auth_token}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "message_id" in data
+        assert "content" in data
+        assert data["direction"] == "received"
+    
+    def test_send_empty_message(self, auth_token):
+        """Empty message should fail"""
+        response = client.post(
+            "/api/v1/messages/send",
+            json={"content": ""},
+            headers={"Authorization": auth_token}
+        )
+        assert response.status_code == 400
+    
+    def test_send_too_long_message(self, auth_token):
+        """Message >5000 chars should fail"""
+        response = client.post(
+            "/api/v1/messages/send",
+            json={"content": "x" * 5001},
+            headers={"Authorization": auth_token}
+        )
+        assert response.status_code == 400
+    
+    def test_receive_messages(self, auth_token):
+        """Poll for messages should return conversation"""
+        # Send a message first
+        client.post(
+            "/api/v1/messages/send",
+            json={"content": "Hi"},
+            headers={"Authorization": auth_token}
+        )
+        
+        # Receive should return messages
+        response = client.get(
+            "/api/v1/messages/receive",
+            headers={"Authorization": auth_token}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "messages" in data
+        assert "unread_count" in data
+        assert len(data["messages"]) >= 2  # sent + received
+    
+    def test_conversation_history(self, auth_token):
+        """Get conversation history should work"""
+        response = client.get(
+            "/api/v1/messages/history?limit=10",
+            headers={"Authorization": auth_token}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "messages" in data
+        assert isinstance(data["messages"], list)
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+```
+
+Run tests: `pytest tests/test_android_messages.py -v`
+
+Expect 6 tests passing.
+
+Add rate limiting (optional for v1, prepare for future):
+
+```python
+# At top of messages.py
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=lambda request: request.scope["user"]["user_id"])
+
+@router.post("/send")
+@limiter.limit("10/minute")  # 10 messages per minute per user
+async def send_message(...):
+    ...
+```
+  </action>
+  <verify>
+1. Test file created: `ls tests/test_android_messages.py`
+2. Run tests: `pytest tests/test_android_messages.py -v` (expect 6/6 passing)
+3. Rate limiter import: `grep "from slowapi" src/api/messages.py` (optional)
+  </verify>
+  <done>
+- 6 tests created covering messaging endpoints
+- Tests for authentication, message validation, polling, history
+- All tests passing
+- Rate limiting prepared (optional in v1)
+- Ready for Plan 03 (load testing and integration verification)
+  </done>
+</task>
+
+</tasks>
+
+<verification>
+After all tasks complete:
+
+1. **Send Message:** POST /api/v1/messages/send with auth → 200 + message_id + emotion_state
+2. **Receive Messages:** GET /api/v1/messages/receive → returns sent + received messages
+3. **History:** GET /api/v1/messages/history → returns paginated conversation
+4. **Validation:** Send empty message → 400, Send >5000 chars → 400
+5. **Auth:** Send without token → 403
+6. **Persistence:** Send message → receive → check database → verify stored
+7. **Emotion:** Response includes emotion_state from LLM pipeline
+
+All 3 tasks must complete before Plan 03 starts.
+</verification>
+
+<success_criteria>
+- POST /api/v1/messages/send endpoint working
+- Messages route through Conductor.request_inference()
+- Message persistence in android_messages table
+- GET /api/v1/messages/receive endpoint working (polling)
+- GET /api/v1/messages/history endpoint working (paginated)
+- Unread message tracking and marking
+- Emotion state included in all responses
+- All endpoints require JWT authentication
+- 6 tests created, all passing
+- No import errors, all syntax valid
+</success_criteria>
+
+<output>
+After completion, create `.planning/phases/06-android-integration/06-02-SUMMARY.md`
+</output>
+
+---

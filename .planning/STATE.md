@@ -1,10 +1,10 @@
 # STATE.md — Demi v1 Project Memory
 
-**Last Updated:** 2026-02-02T05:18:00Z
-**Current Phase:** Phase 06 — Android Integration (In Progress)
-**Current Plan:** 06-01 — FastAPI Authentication Backend (COMPLETE ✅)
-**Next Phase:** Phase 06 — Android Integration (Ready for Plan 06-02)
-**Overall Progress:** Roadmap 100% complete, Implementation 92% (Phase 01: 4/4, Phase 02: 5/5, Phase 03: 4/4, Phase 04: 4/4, Phase 05: 3/3, Phase 06: 1/4 complete)
+**Last Updated:** 2026-02-02T06:30:00Z
+**Current Phase:** Phase 06 — Android Integration (PARTIAL ⚠️)
+**Current Plan:** 06-03 — Autonomy & Unified State (COMPLETE ✅)
+**Next Phase:** Phase 06 — Android Client Gap Closure (Needed)
+**Overall Progress:** Roadmap 100% complete, Implementation 90% (Phase 01: 4/4, Phase 02: 5/5, Phase 03: 4/4, Phase 04: 4/4, Phase 05: 3/3, Phase 06: 3/3 backend complete, client missing)
 
 ---
 
@@ -65,6 +65,9 @@
 - ✅ 05-01: Discord Bot Foundation (DiscordBot plugin, message routing, intents, event handlers)
 - ✅ 05-02: Response Formatting & Embed System (emotion-to-color mapping, rich embeds, visual emotional state)
 - ✅ 05-03: Ramble Posting & Autonomy System (autonomous rambles, emotion triggers, 60-min spam prevention, 11 tests)
+- ✅ 06-01: Authentication & User Management (JWT auth, refresh tokens, multi-device sessions, brute-force protection)
+- ✅ 06-02: WebSocket Messaging & Emotion Tracking (real-time messaging, read receipts, typing indicators, emotion state)
+- ✅ 06-03: Autonomy & Unified State (check-ins, guilt-trips, background task, unified emotional state)
 
 **Phase Output Summary (Phase 05):**
 - Discord bot with full message routing (mentions and DMs)
@@ -87,6 +90,24 @@
 - ✅ RAMB-03: Ramble content generation via LLM with trigger-specific prompts
 - ✅ RAMB-04: Ramble posting to configured Discord channel
 - ✅ RAMB-05: Ramble database logging with full metadata
+
+**Phase Output Summary (Phase 06 - Backend Complete):**
+- FastAPI backend with JWT authentication (30-min access, 7-day refresh tokens)
+- Multi-device session management (simultaneous login on phone + tablet)
+- WebSocket real-time messaging at /api/v1/chat/ws
+- Message persistence with 7-day history and read receipts
+- Typing indicators during LLM generation ("Demi is thinking...")
+- Autonomous check-in system (loneliness > 0.7, excitement > 0.8, frustration > 0.6)
+- Guilt-trip messages when user ignores check-ins for 24h+ (escalation at 48h)
+- Background task checking triggers every 15 minutes
+- Unified emotional state across Discord and Android platforms
+- Android client NOT built (gap found - needs separate plan)
+
+**Requirements Partially Met (Phase 06):**
+- ✅ ANDR-01: FastAPI backend with JWT authentication
+- ✅ ANDR-02: WebSocket real-time messaging
+- ✅ ANDR-03: Autonomous check-ins and guilt-trips
+- ✗ ANDR-04: Android mobile client (missing - gap closure needed)
 
 **Phase Output Summary (Phase 04):**
 - LLM inference engine with Ollama async client (llama3.2:1b model)

@@ -7,6 +7,14 @@
 # Discord Integration (Phase 05)
 discord.py>=2.6.0
 
+# Android API (Phase 06)
+fastapi>=0.115.0
+uvicorn>=0.32.0
+pydantic[email]>=2.9.0
+passlib[bcrypt]>=1.7.4
+PyJWT>=2.9.0
+python-multipart>=0.0.12
+
 # Database
 SQLAlchemy>=2.0.0
 alembic>=1.13.0
