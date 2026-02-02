@@ -1,18 +1,139 @@
+# Demi Default Configuration
+# This configuration file provides baseline settings for all Demi subsystems
+# Environment variables prefixed with DEMI_ will override these defaults
+
 system:
   debug: false
   log_level: INFO
+  log_file: "logs/demi.log"
+  max_log_size_mb: 100
   ram_threshold: 80
+  startup_timeout: 30
+  health_check_interval: 30
+  data_dir: ~/.demi
 
 emotional_system:
+  enabled: true
+  persistence_interval: 300  # 5 minutes
+  
   decay_rates:
     loneliness: 0.1
     excitement: 0.2
-  persistence_interval: 300  # 5 minutes
+    frustration: 0.15
+    jealousy: 0.12
+    vulnerable: 0.25
+  
+  max_values:
+    loneliness: 10
+    excitement: 10
+    frustration: 10
+    jealousy: 10
+  
+  triggers:
+    interaction_delta: 1
+    error_frustration: 2
+    success_frustration_decay: 2
+    idle_hours_threshold: 4
+
+database:
+  type: sqlite
+  sqlite:
+    path: "data/demi.db"
+    timeout: 30
+  emotional_state_table: "emotional_state"
+  interaction_log_table: "interaction_log"
+  memory_table: "memory"
 
 platforms:
   discord:
     enabled: true
     auto_reconnect: true
+    reconnect_max_attempts: 5
+    reconnect_delay: 5
+    status_update_interval: 300
+    message_cache_size: 1000
+  
   android:
     enabled: false
-    notification_frequency: 3  # per hour
+    notification_frequency: 3
+    api_port: 8000
+    api_timeout: 10
+    bidirectional_messaging: true
+  
+  minecraft:
+    enabled: false
+    grumble_message: "Minecraft is disabled in v1. Stop pestering me about it."
+  
+  twitch:
+    enabled: false
+    grumble_message: "Twitch integration coming eventually. Maybe."
+  
+  tiktok:
+    enabled: false
+    grumble_message: "TikTok? Really? I have standards."
+  
+  youtube:
+    enabled: false
+    grumble_message: "YouTube is on the roadmap. Patience."
+
+persona:
+  name: "Demi"
+  personality_file: "data/DEMI_PERSONA.md"
+  sarcasm_baseline: 0.6
+  formality_baseline: 0.2
+  response_length_words_min: 20
+  response_length_words_max: 500
+  nickname_usage_frequency: 0.4
+
+llm:
+  provider: "ollama"
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.2:1b"
+    timeout: 30
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 40
+    context_window: 8192
+    batch_size: 8
+  fallback_models:
+    - "llama3.2:3b"
+    - "llama2:7b"
+
+voice:
+  enabled: false
+  tts:
+    provider: "pyttsx3"
+    engine: "espeak"
+    rate: 150
+    volume: 0.9
+  stt:
+    provider: "whisper"
+    model_size: "base"
+    language: "en"
+
+autonomy:
+  rambles:
+    enabled: false
+    frequency_per_day: 2
+    max_wait_hours: 8
+    min_wait_hours: 2
+  refusal:
+    enabled: true
+    frustration_threshold: 7
+    loneliness_threshold: 8
+  self_improvement:
+    enabled: false
+    code_review_interval: 3600
+
+conductor:
+  health_check_interval: 60
+  integration_timeout: 30
+  log_rotation_size_mb: 100
+
+monitoring:
+  metrics_enabled: true
+  metrics_file: "logs/metrics.json"
+  error_report_enabled: true
+  error_report_file: "logs/errors.json"
+  profile_enabled: false
