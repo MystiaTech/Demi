@@ -421,6 +421,90 @@ class Conductor:
             self._logger.exception(f"Unexpected error during inference: {str(e)}")
             return "I'm not ready to talk right now... wait a sec?"
 
+async def request_inference_for_platform(
+        self, 
+        platform: str, 
+        user_id: str, 
+        content: str, 
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Request inference from LLM for platform-specific message.
+        This method handles the full pipeline including emotion state and processing.
+
+        Args:
+            platform: Platform identifier (e.g., "android", "discord")
+            user_id: User identifier for emotion state lookup
+            content: User's message content
+            context: Additional context dict
+
+        Returns:
+            Response dict with content, emotion_state, and metadata
+        """
+        if not self.llm_available:
+            self._logger.warning("LLM inference requested but Ollama unavailable")
+            return {
+                "content": "I'm not ready to talk right now... wait a sec?",
+                "emotion_state": {},
+                "platform": platform,
+                "error": "LLM unavailable",
+            }
+
+        try:
+# Load user's emotional state
+            emotion_state = await self.emotion_persistence.load_state(user_id)
+            
+            # Build conversation history with current message
+            messages = [{"role": "user", "content": content}]
+            
+            # Add system prompt with emotion state
+            system_prompt = self.prompt_builder.build(
+                emotional_state=emotion_state,
+                codebase_reader=self.codebase_reader
+            )
+
+            # Prepend system prompt to messages
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
+            # Call inference with emotion state
+            response_content = await self.llm.chat(
+                messages=messages, emotional_state_before=emotion_state.to_dict()
+            )
+
+            # Process response and update emotions
+            if hasattr(self.llm, "response_processor") and self.llm.response_processor:
+                processed = self.llm.response_processor.process_response(
+                    response=response_content,
+                    emotional_state_before=emotion_state,
+                    user_message=content,
+                )
+                emotion_state_after = processed.emotional_state_after
+                response_content = processed.cleaned_text
+            else:
+                # Fallback: just get default emotion state
+                emotion_state_after = emotion_state.to_dict()
+
+            # Persist updated emotion state
+            await self.emotion_persistence.save_state(user_id, emotion_state)
+
+            return {
+                "content": response_content,
+                "emotion_state": emotion_state_after,
+                "platform": platform,
+                "context": context or {},
+            }
+
+        except Exception as e:
+            self._logger.exception(f"Error during platform inference: {str(e)}")
+            return {
+                "content": "I'm having trouble thinking right now... can you try again?",
+                "emotion_state": emotion_state.to_dict()
+                if "emotion_state" in locals()
+                else {},
+                "platform": platform,
+                "error": str(e),
+            }
+
     async def shutdown(self) -> None:
         """
         Execute graceful shutdown sequence in reverse order.
@@ -651,4 +735,12 @@ def get_conductor(config: Optional[DemiConfig] = None) -> Conductor:
     global _conductor_instance
     if _conductor_instance is None:
         _conductor_instance = Conductor(config)
+    return _conductor_instance
+
+
+def get_conductor_instance() -> Conductor:
+    """Get existing global conductor instance."""
+    global _conductor_instance
+    if _conductor_instance is None:
+        raise RuntimeError("Conductor not initialized. Call get_conductor() first.")
     return _conductor_instance
