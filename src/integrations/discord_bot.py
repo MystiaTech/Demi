@@ -129,21 +129,14 @@ class DiscordBot(BasePlatform):
                     # Show typing indicator (improves UX)
                     async with message.channel.typing():
                         # Route through Conductor
-                        response = await self.conductor.request_inference(
-                            platform="discord",
-                            user_id=user_id,
-                            content=content,
-                            context={
-                                "guild_id": guild_id,
-                                "channel_id": channel_id,
-                                "is_dm": is_dm,
-                                "author_name": str(message.author),
-                                "message_timestamp": message.created_at.isoformat(),
-                            }
-                        )
+                        # Format message for LLM (simple format for now, will be enhanced in future plans)
+                        messages = [
+                            {"role": "user", "content": content}
+                        ]
 
-                    # Send response (Task 3 will add formatting)
-                    response_text = response.get("content", "Error generating response")
+                        response_text = await self.conductor.request_inference(messages)
+
+                    # Send response
                     await message.reply(response_text, mention_author=False)
 
                     self.logger.info(
