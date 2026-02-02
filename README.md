@@ -119,6 +119,16 @@ Demi will post spontaneous thoughts when:
 
 Rambles post at most **every 60 minutes** to avoid overwhelming the channel.
 
+## Unified Emotional State (Android + Discord)
+
+Demi has **ONE** emotional state shared across all platforms.
+
+- Discord conversation increases affection → Android messages warmer
+- Android loneliness triggers Discord check-ins
+- Frustration from Android errors affects Discord responses
+
+**Implementation:** EmotionPersistence stores single state in database, loaded by all platforms.
+
 ## Getting Started
 
 1. **Read the project docs**
