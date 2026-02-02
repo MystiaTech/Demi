@@ -6,6 +6,7 @@ with context window management, token counting, and error handling.
 """
 
 import asyncio
+import time
 from typing import Optional, List, Dict
 from src.llm.config import LLMConfig
 from src.core.logger import DemiLogger
@@ -31,18 +32,20 @@ class OllamaInference:
     health checks, and comprehensive error handling.
     """
 
-    def __init__(self, config: LLMConfig, logger: DemiLogger):
+    def __init__(self, config: LLMConfig, logger: DemiLogger, response_processor=None):
         """
         Initialize OllamaInference client.
 
         Args:
             config: LLMConfig with model and timeout settings
             logger: DemiLogger instance for logging
+            response_processor: Optional ResponseProcessor for post-processing responses
         """
         self.config = config
         self.logger = logger
         self._tokenizer = None
         self._tokenizer_attempted = False
+        self.response_processor = response_processor
         self.logger.debug(
             f"OllamaInference initialized with model: {config.model_name}"
         )
@@ -81,7 +84,10 @@ class OllamaInference:
             return False
 
     async def chat(
-        self, messages: List[Dict[str, str]], max_context_tokens: int = 8000
+        self,
+        messages: List[Dict[str, str]],
+        max_context_tokens: int = 8000,
+        emotional_state_before=None,
     ) -> str:
         """
         Generate a chat response using Ollama.
@@ -89,9 +95,10 @@ class OllamaInference:
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_context_tokens: Maximum tokens allowed in context window
+            emotional_state_before: Optional emotional state for response processing
 
         Returns:
-            Response text from the model
+            Response text from the model (cleaned if processor available)
 
         Raises:
             InferenceError: On HTTP errors, timeouts, or Ollama unavailable
@@ -116,11 +123,14 @@ class OllamaInference:
         # Trim context if needed
         trimmed_messages = self._trim_context(messages, max_context_tokens)
 
-        # Call Ollama
+        # Call Ollama with timing
         try:
             import ollama
 
             client = ollama.AsyncClient(host=self.config.ollama_base_url)
+
+            # Record start time
+            start_time = time.time()
 
             response = await asyncio.wait_for(
                 client.chat(
@@ -135,8 +145,24 @@ class OllamaInference:
                 timeout=self.config.timeout_sec,
             )
 
+            # Calculate inference time
+            inference_time_sec = time.time() - start_time
+
             response_text = response.message.content
-            self.logger.debug(f"Chat response: {len(response_text)} chars")
+            self.logger.debug(
+                f"Chat response: {len(response_text)} chars in {inference_time_sec:.2f}s"
+            )
+
+            # Post-process response if processor available
+            if self.response_processor and emotional_state_before:
+                processed = self.response_processor.process_response(
+                    response_text=response_text,
+                    inference_time_sec=inference_time_sec,
+                    emotional_state_before=emotional_state_before,
+                    interaction_type="successful_response",
+                )
+                return processed.text
+
             return response_text
 
         except asyncio.TimeoutError:
