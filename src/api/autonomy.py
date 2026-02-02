@@ -29,6 +29,7 @@ No platform-specific emotional states. One Demi, one emotional state.
 import asyncio
 import sqlite3
 import os
+import uuid
 from datetime import datetime, timedelta, UTC
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ from dataclasses import dataclass
 from src.core.logger import DemiLogger
 from src.emotion.models import EmotionalState
 from src.emotion.persistence import EmotionPersistence
+from src.autonomy.coordinator import AutonomyCoordinator
 from asyncio import create_task, sleep
 
 logger = DemiLogger()
@@ -444,10 +446,127 @@ class AutonomyTask:
                 logger.error(f"Error checking user {user_id}: {e}")
 
 
-# Global autonomy task instance
+class AutonomyManager:
+    """Manages Android autonomy integration with unified autonomy system."""
+
+    def __init__(self, conductor=None):
+        """Initialize autonomy manager.
+
+        Args:
+            conductor: Conductor instance for autonomy system access
+        """
+        self.conductor = conductor
+        self.autonomy_coordinator = None
+        self.logger = DemiLogger()
+
+        # Get autonomy coordinator from conductor
+        if conductor and hasattr(conductor, "autonomy_coordinator"):
+            self.autonomy_coordinator = conductor.autonomy_coordinator
+            self.logger.info("Connected to unified autonomy system")
+        else:
+            self.logger.warning("Autonomy coordinator not available")
+
+    async def initialize(self) -> bool:
+        """Initialize Android autonomy system.
+
+        Returns:
+            True if initialization successful
+        """
+        try:
+            # Create check-ins table
+            await create_checkins_table()
+
+            # Autonomy system is managed by conductor, just verify it's available
+            if self.autonomy_coordinator:
+                self.logger.info(
+                    "Android autonomy system initialized with unified coordinator"
+                )
+                return True
+            else:
+                self.logger.warning("No autonomy coordinator available")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Android autonomy: {e}")
+            return False
+
+    async def shutdown(self) -> None:
+        """Shutdown Android autonomy system."""
+        # Autonomy system is managed by conductor, no need to stop here
+        self.logger.info("Android autonomy shutdown complete")
+
+    def send_websocket_message(self, content: str, device_id: str) -> bool:
+        """
+        Send message through Android WebSocket for unified autonomy system.
+
+        Args:
+            content: Message content to send
+            device_id: Android device ID
+
+        Returns:
+            True if message sent successfully
+        """
+        try:
+            from src.api.websocket import get_connection_manager
+
+            manager = get_connection_manager()
+
+            # Create message dict
+            message_dict = {
+                "message_id": str(uuid.uuid4()),
+                "conversation_id": device_id,
+                "user_id": device_id,
+                "sender": "demi",
+                "content": content,
+                "emotion_state": {},
+                "created_at": datetime.now(UTC).isoformat(),
+                "is_autonomous": True,
+            }
+
+            # Send via WebSocket
+            asyncio.create_task(
+                manager.send_message(device_id, "message", message_dict)
+            )
+
+            # Store message
+            asyncio.create_task(self._store_autonomous_message(device_id, content))
+
+            self.logger.info(f"Autonomous Android message sent to device {device_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to send autonomous Android message: {e}")
+            return False
+
+    async def _store_autonomous_message(self, user_id: str, content: str):
+        """Store autonomous message in database."""
+        try:
+            from src.api.messages import store_message
+
+            await store_message(
+                conversation_id=user_id,
+                user_id=user_id,
+                sender="demi",
+                content=content,
+                emotion_state={},
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to store autonomous message: {e}")
+
+
+# Global instances (legacy support)
 autonomy_task = AutonomyTask()
+autonomy_manager = None
 
 
 def get_autonomy_task() -> AutonomyTask:
-    """Get singleton autonomy task"""
+    """Get legacy autonomy task (deprecated)"""
     return autonomy_task
+
+
+def get_autonomy_manager(conductor=None) -> AutonomyManager:
+    """Get or create autonomy manager instance."""
+    global autonomy_manager
+    if autonomy_manager is None:
+        autonomy_manager = AutonomyManager(conductor)
+    return autonomy_manager
