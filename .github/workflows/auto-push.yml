@@ -1,0 +1,48 @@
+name: Auto-Push Commits to Remote
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "Demi CI"
+          git config user.email "demi-automation@github.com"
+
+      - name: Ensure remote is up to date
+        run: |
+          git remote -v
+          git fetch origin main
+
+      - name: Push commits to remote
+        run: |
+          # Only push if there are commits ahead of origin
+          COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD)
+          if [ "$COMMITS_AHEAD" -gt 0 ]; then
+            echo "Found $COMMITS_AHEAD commits ahead of origin/main. Pushing..."
+            git push origin main
+            echo "✓ Pushed successfully"
+          else
+            echo "Already in sync with origin/main"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify push
+        run: |
+          git log origin/main -1 --oneline
+          echo "Latest remote commit confirmed"
