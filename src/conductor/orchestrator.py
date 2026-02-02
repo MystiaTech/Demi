@@ -115,17 +115,103 @@ class Conductor:
             self._logger.info("=" * 60)
 
             # Step 1: Configuration and logging (already done in __init__)
-            self._logger.info("step_1_complete", message="Configuration loaded")
+            self._logger.info("Configuration loaded")
 
             # Step 2: Database initialization
-            self._logger.info("step_2_start", message="Initializing database...")
+            self._logger.info("Initializing database...")
             try:
                 # Initialize database tables
                 self._db_manager.create_tables()
-                self._logger.info("step_2_complete", message="Database initialized")
+                self._logger.info("Database initialized")
             except Exception as e:
-                self._logger.error("database_initialization_failed", error=str(e))
+                self._logger.error(f"database_initialization_failed: {str(e)}")
                 return False
+
+            # Step 3: Plugin discovery and registration
+            self._logger.info("Discovering plugins...")
+            try:
+                await self._plugin_manager.discover_and_register()
+                plugin_count = len(self._plugin_manager.registry)
+                self._logger.info(f"Plugin discovery complete: {plugin_count} plugins")
+            except Exception as e:
+                self._logger.error(f"plugin_discovery_failed: {str(e)}")
+                return False
+
+            # Step 4: Start health monitoring loop
+            self._logger.info("Starting health monitor...")
+            try:
+                platforms = [p.name for p in self._plugin_manager.list_plugins()]
+                health_task = asyncio.create_task(
+                    self._health_monitor.health_check_loop(
+                        platforms, health_check_fn=None
+                    )
+                )
+                self._background_tasks.append(health_task)
+                self._logger.info("Health monitor started")
+            except Exception as e:
+                self._logger.error(f"health_monitor_startup_failed: {str(e)}")
+                return False
+
+            # Step 5: Initialize predictive scaler
+            self._logger.info("Initializing scaler...")
+            try:
+                # Scaler is stateless and operates on-demand during health checks
+                self._logger.info("Scaler initialized")
+            except Exception as e:
+                self._logger.error(f"scaler_initialization_failed: {str(e)}")
+                return False
+
+            # Step 6: Start request router
+            self._logger.info("Starting request router...")
+            try:
+                # Router is stateless, just initialize it
+                self._logger.info("Request router ready")
+            except Exception as e:
+                self._logger.error(f"router_startup_failed: {str(e)}")
+                return False
+
+            # Step 7: Enable registered plugins
+            self._logger.info("Loading plugins...")
+            try:
+                loaded_count = 0
+                for metadata in self._plugin_manager.list_plugins():
+                    try:
+                        plugin = await self._plugin_manager.load_plugin(metadata.name)
+                        if plugin:
+                            loaded_count += 1
+                            self._logger.info(f"Plugin loaded: {metadata.name}")
+                    except Exception as e:
+                        self._logger.warning(
+                            f"plugin_load_failed {metadata.name}: {str(e)}"
+                        )
+                        # Continue with other plugins even if one fails
+                        continue
+
+                self._logger.info(f"Plugins loaded: {loaded_count}")
+            except Exception as e:
+                self._logger.error(f"plugin_loading_failed: {str(e)}")
+                return False
+
+            # Step 8: Register signal handlers
+            self._logger.info("Registering signal handlers...")
+            try:
+                self._register_signal_handlers()
+                self._logger.info("Signal handlers registered")
+            except Exception as e:
+                self._logger.error(f"signal_handler_registration_failed: {str(e)}")
+                return False
+
+            self._running = True
+            startup_time_sec = time.time() - self._startup_time
+            self._logger.info("=" * 60)
+            self._logger.info(f"✓ CONDUCTOR STARTUP COMPLETE ({startup_time_sec:.2f}s)")
+            self._logger.info("=" * 60)
+
+            return True
+
+        except Exception as e:
+            self._logger.exception(f"conductor_startup_failed: {str(e)}")
+            return False
 
             # Step 3: Plugin discovery and registration
             self._logger.info("step_3_start", message="Discovering plugins...")
@@ -237,23 +323,22 @@ class Conductor:
             self._logger.info("=" * 60)
 
             # Step 1: Stop accepting new requests
-            self._logger.info("step_1_start", message="Stopping request acceptance...")
+            self._logger.info("Stopping request acceptance...")
             self._running = False
-            self._logger.info("step_1_complete", message="Request acceptance stopped")
+            self._logger.info("Request acceptance stopped")
 
             # Step 2: Disable all plugins
-            self._logger.info("step_2_start", message="Disabling plugins...")
+            self._logger.info("Disabling plugins...")
             try:
                 await self._plugin_manager.shutdown_all()
-                self._logger.info("step_2_complete", message="All plugins disabled")
+                self._logger.info("All plugins disabled")
             except Exception as e:
-                self._logger.error("plugin_shutdown_failed", error=str(e))
+                self._logger.error(f"plugin_shutdown_failed: {str(e)}")
 
             # Step 3: Stop background loops
-            self._logger.info("step_3_start", message="Stopping background tasks...")
+            self._logger.info("Stopping background tasks...")
             try:
                 self._health_monitor.stop()
-                self._scaler.stop()
 
                 # Cancel all background tasks
                 for task in self._background_tasks:
@@ -266,32 +351,32 @@ class Conductor:
                         *self._background_tasks, return_exceptions=True
                     )
 
-                self._logger.info("step_3_complete", message="Background tasks stopped")
+                self._logger.info("Background tasks stopped")
             except Exception as e:
-                self._logger.error("background_task_shutdown_failed", error=str(e))
+                self._logger.error(f"background_task_shutdown_failed: {str(e)}")
 
             # Step 4: Close database connections
-            self._logger.info("step_4_start", message="Closing database...")
+            self._logger.info("Closing database...")
             try:
                 self._db_manager.close()
-                self._logger.info("step_4_complete", message="Database closed")
+                self._logger.info("Database closed")
             except Exception as e:
-                self._logger.error("database_shutdown_failed", error=str(e))
+                self._logger.error(f"database_shutdown_failed: {str(e)}")
 
             # Step 5: Record final metrics
-            self._logger.info("step_5_start", message="Recording final metrics...")
+            self._logger.info("Recording final metrics...")
             try:
                 # Final metrics recording happens automatically
-                self._logger.info("step_5_complete", message="Final metrics recorded")
+                self._logger.info("Final metrics recorded")
             except Exception as e:
-                self._logger.error("metrics_recording_failed", error=str(e))
+                self._logger.error(f"metrics_recording_failed: {str(e)}")
 
             self._logger.info("=" * 60)
             self._logger.info("✓ CONDUCTOR SHUTDOWN COMPLETE")
             self._logger.info("=" * 60)
 
         except Exception as e:
-            self._logger.error("conductor_shutdown_failed", error=str(e), exc_info=True)
+            self._logger.exception(f"conductor_shutdown_failed: {str(e)}")
 
     def _register_signal_handlers(self) -> None:
         """Register handlers for SIGINT and SIGTERM for graceful shutdown."""
