@@ -1,0 +1,33 @@
+{
+  "project": {
+    "name": "Demi v1",
+    "version": "1.0",
+    "description": "Autonomous AI companion with emotional systems"
+  },
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "commit_docs": true,
+    "branching_strategy": "none"
+  },
+  "model_profile": "budget",
+  "auto_resume": {
+    "enabled": true,
+    "check_interval_seconds": 300,
+    "max_wait_hours": 4,
+    "max_retries": 12,
+    "resume_on_limit_reset": true,
+    "notification_on_resume": true
+  },
+  "execution": {
+    "timeout_seconds": 3600,
+    "parallel_waves": true,
+    "atomic_commits": true
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "structured",
+    "output_file": "~/.demi/logs/gsd.log"
+  }
+}
