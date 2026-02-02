@@ -229,10 +229,31 @@ class DiscordBot(BasePlatform):
                             {"role": "user", "content": content}
                         ]
 
-                        response_text = await self.conductor.request_inference(messages)
+                        response = await self.conductor.request_inference(messages)
 
-                    # Send response
-                    await message.reply(response_text, mention_author=False)
+                    # Format response as embed
+                    try:
+                        # Handle both dict and string responses (backward compatibility)
+                        if isinstance(response, dict):
+                            # New format: dict with content and emotion_state
+                            embed = format_response_as_embed(response, str(message.author))
+                            await message.reply(embed=embed, mention_author=False)
+                            response_text = response.get("content", "")
+                        else:
+                            # Legacy format: plain string
+                            # Wrap in dict for embed formatting
+                            response_dict = {"content": response, "emotion_state": {}}
+                            embed = format_response_as_embed(response_dict, str(message.author))
+                            await message.reply(embed=embed, mention_author=False)
+                            response_text = response
+                    except Exception as embed_error:
+                        # Fallback to plain text if embed formatting fails
+                        self.logger.warning(
+                            f"Embed formatting failed, using plain text: {embed_error}",
+                            user_id=user_id
+                        )
+                        response_text = response.get("content", response) if isinstance(response, dict) else response
+                        await message.reply(response_text, mention_author=False)
 
                     self.logger.info(
                         "Discord response sent",
