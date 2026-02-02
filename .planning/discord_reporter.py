@@ -17,11 +17,18 @@ import requests
 import json
 import subprocess
 import base64
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Discord webhook URL - store this securely!
-WEBHOOK_URL = ""
+# Discord webhook URL from environment variable
+WEBHOOK_URL = os.getenv("DISCORD_PROGRESS_WEBHOOK_URL")
+
+if not WEBHOOK_URL:
+    raise ValueError(
+        "DISCORD_PROGRESS_WEBHOOK_URL environment variable not set. "
+        "Add your webhook URL to .env file."
+    )
 
 # Project paths
 # .planning/discord_reporter.py -> parent: .planning -> parent: Demi -> parent: projects
@@ -66,10 +73,22 @@ def get_phase_status():
         content = STATE_FILE.read_text()
         lines = content.split('\n')
 
-        # Look for phase markers
+        # Look for phase markers in Current Position section
+        phase_info = []
+        in_position = False
         for i, line in enumerate(lines):
-            if '## Current Phase' in line or '## Phase Status' in line:
-                return '\n'.join(lines[i:i+10])
+            if '## Current Position' in line:
+                in_position = True
+                continue
+            if in_position:
+                # Stop at next section header or blank line followed by ---
+                if line.startswith('##'):
+                    break
+                if line.strip() and ('**Phase:**' in line or '**Progress:**' in line or '**Status:**' in line):
+                    phase_info.append(line.strip())
+
+        if phase_info:
+            return '\n'.join(phase_info[:3])  # First 3 lines of phase info
 
         return "Phase status unclear - check STATE.md"
     except Exception as e:
