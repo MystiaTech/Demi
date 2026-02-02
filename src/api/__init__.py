@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.auth import router as auth_router
 from src.api.websocket import router as websocket_router
 from src.api.migrations import run_all_migrations
+from src.api.autonomy import get_autonomy_task, create_checkins_table
 from src.core.logger import DemiLogger
 
 logger = DemiLogger()
@@ -29,7 +30,12 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         run_all_migrations()
+        create_checkins_table()
         logger.info("FastAPI started, database migrations complete")
+
+        # Start autonomy task
+        autonomy_task = get_autonomy_task()
+        await autonomy_task.start()
 
     # Include auth router
     app.include_router(auth_router)
@@ -41,6 +47,13 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/status")
     async def status():
         return {"status": "ok", "service": "demi-android-api", "version": "1.0.0"}
+
+    # Shutdown handler
+    @app.on_event("shutdown")
+    async def shutdown():
+        # Stop autonomy task
+        autonomy_task = get_autonomy_task()
+        await autonomy_task.stop()
 
     return app
 
