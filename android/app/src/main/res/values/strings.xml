@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Demi</string>
+    <string name="login_title">Welcome Back</string>
+    <string name="email_hint">Email</string>
+    <string name="password_hint">Password</string>
+    <string name="login_button">Login</string>
+    <string name="chat_title">Chat with Demi</string>
+    <string name="message_hint">Type a message...</string>
+    <string name="send">Send</string>
+    <string name="dashboard_title">Dashboard</string>
+    <string name="emotional_state">Emotional State</string>
+    <string name="sessions">Sessions</string>
+    <string name="logout">Logout</string>
+    <string name="export_data">Export Data</string>
+    <string name="biometric_prompt_title">Authenticate</string>
+    <string name="biometric_prompt_subtitle">Use biometric to unlock</string>
+    <string name="connecting">Connecting...</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="typing">Demi is typing...</string>
+</resources>
