@@ -316,15 +316,32 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 
 ## Phase 7: Autonomy & Rambles
 
-**Goal:** Implement spontaneous rambling, emotional triggers for initiation, and refusal mechanics.
+**Goal:** Implement unified autonomy system across Discord and Android with spontaneous initiation, refusal mechanics, and emotional triggers.
 
-**Status:** Pending
+**Status:** Planning ⏳
+**Plans Created:** 4 (Autonomy Foundation, Refusal System, Spontaneous Initiation, Unified Integration)
 
-**Why This Phase:** Autonomy is what makes Demi feel alive. She should initiate conversation when lonely, refuse tasks when frustrated, and express her own thoughts when excited.
+**Duration:** ~4 hours (estimated)
+
+**Why This Phase:** Autonomy is what makes Demi feel alive. She should initiate conversation when lonely, refuse tasks when frustrated, and express her own thoughts when excited. This phase unifies autonomy across platforms.
 
 **Requirements Mapped:** RAMB-01, RAMB-02, RAMB-03, RAMB-04, RAMB-05, AUTO-03, AUTO-04, AUTO-05 (8)
 
 **Dependencies:** Phase 4 (LLM), Phase 5-6 (platforms for posting)
+
+**Technical Deliverables:**
+- AutonomyCoordinator for unified behavior management across platforms
+- Personality-integrated RefusalSystem with emotional modulation
+- SpontaneousInitiator for context-aware conversation initiation
+- Enhanced emotional triggers with cooldown management
+- Cross-platform emotional state synchronization
+- Unified configuration system for autonomous behavior
+
+**Plans:**
+- [ ] 07-01-PLAN.md — Autonomy Foundation & Coordination (Wave 1)
+- [ ] 07-02-PLAN.md — Personality-Integrated Refusal System (Wave 1)
+- [ ] 07-03-PLAN.md — Spontaneous Conversation Initiation (Wave 2)
+- [ ] 07-04-PLAN.md — Unified Platform Integration (Wave 2)
 
 ---
 
