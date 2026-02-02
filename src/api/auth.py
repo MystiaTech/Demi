@@ -25,8 +25,20 @@ security = HTTPBearer()
 logger = DemiLogger()
 
 # Configuration
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
-REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY", "change-refresh-key-too")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY")
+
+# Validate secrets are set
+if not SECRET_KEY:
+    raise ValueError(
+        "JWT_SECRET_KEY environment variable must be set. "
+        "Generate a secure random key: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+if not REFRESH_SECRET_KEY:
+    raise ValueError(
+        "JWT_REFRESH_SECRET_KEY environment variable must be set. "
+        "Generate a secure random key: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
@@ -179,7 +191,7 @@ async def create_session(
         )
         conn.commit()
 
-    logger.info(f"Session created for user {user_id}, device: {device_name}")
+    logger.info(f"Session created (user_id: {user_id})")
     return session
 
 
@@ -232,6 +244,9 @@ async def login(req: LoginRequest):
             )
             conn.commit()
 
+        if new_failed_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
+            logger.warning(f"Account locked: too many failed attempts (user_id: {user.user_id})")
+
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
@@ -263,7 +278,7 @@ async def login(req: LoginRequest):
     access_token = create_access_token(user.user_id, user.email, session.session_id)
     refresh_token = create_refresh_token(user.user_id, session.session_id)
 
-    logger.info(f"User logged in: {user.email}, session: {session.session_id}")
+    logger.info(f"User login successful (session_id: {session.session_id[-8:]})")  # Log last 8 chars only
 
     return TokenResponse(
         access_token=access_token,
@@ -320,7 +335,7 @@ async def refresh_access_token(req: RefreshTokenRequest):
     # Issue new access token
     access_token = create_access_token(user_id, user.email, session_id)
 
-    logger.info(f"Access token refreshed for session: {session_id}")
+    logger.info(f"Access token refreshed (session_id: {session_id[-8:]})")  # Log last 8 chars only
 
     return TokenResponse(
         access_token=access_token,
@@ -398,7 +413,7 @@ async def revoke_session(
         )
         conn.commit()
 
-    logger.info(f"Session revoked: {session_id} by user {user_id}")
+    logger.info(f"Session revoked (session_id: {session_id[-8:]}, user_id: {user_id[:8]})")  # Log last 8 chars only
 
     return {"message": "Session revoked successfully"}
 

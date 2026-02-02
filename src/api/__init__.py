@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 from src.api.auth import router as auth_router
 from src.api.websocket import router as websocket_router
 from src.api.migrations import run_all_migrations
@@ -17,13 +18,14 @@ def create_app() -> FastAPI:
         description="API for Android client communication with Demi",
     )
 
-    # Add CORS middleware (allow Android client requests)
+    # Add CORS middleware with restricted origins
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Mobile clients from any origin
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=allowed_origins,
+        allow_credentials=False,  # Disable credential cookies; use bearer tokens instead
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Initialize database

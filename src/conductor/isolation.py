@@ -11,6 +11,7 @@ import json
 import psutil
 import signal
 import sys
+import resource
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -139,27 +140,30 @@ class IsolatedPluginRunner:
         self, plugin_name: str, request: Dict[str, Any], plugin_code: Optional[str]
     ) -> asyncio.subprocess.Process:
         """Create an isolated subprocess for the request."""
-        # Prepare request data for subprocess
+        # Prepare request data for subprocess as safe JSON
         request_json = json.dumps(request)
 
         # Build command to run isolated execution
         if plugin_code:
-            # Run custom plugin code
+            # Run custom plugin code - pass request via stdin to avoid string injection
             cmd = [
                 sys.executable,
                 "-c",
-                f"""
+                """
 import json
 import sys
 sys.path.insert(0, '/home/mystiatech/projects/Demi')
 
+# Read request from stdin
+request_data = sys.stdin.read()
+request = json.loads(request_data)
+
 # Execute plugin code with request
-request = json.loads('{request_json}')
-{plugin_code}
-""",
+"""
+                + plugin_code,
             ]
         else:
-            # Run standard plugin execution
+            # Run standard plugin execution - pass request via stdin
             cmd = [
                 sys.executable,
                 "-c",
@@ -176,7 +180,9 @@ async def run():
     await manager.discover_and_register()
     plugin = await manager.load_plugin('{plugin_name}')
     if plugin:
-        result = plugin.handle_request({{'type': '{plugin_name}', **json.loads('{request_json}')}})
+        request_data = sys.stdin.read()
+        request_dict = json.loads(request_data)
+        result = plugin.handle_request({{'type': '{plugin_name}', **request_dict}})
         print(json.dumps(result))
 
 asyncio.run(run())
@@ -187,12 +193,18 @@ asyncio.run(run())
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 preexec_fn=self._setup_process_limits
                 if sys.platform != "win32"
                 else None,
             )
+            # Send request data via stdin
+            process.stdin.write(request_json.encode("utf-8"))
+            await process.stdin.drain()
+            process.stdin.close()
+
             self._active_processes[process.pid] = process
             logger.debug(f"Created isolated subprocess {process.pid} for {plugin_name}")
             return process
@@ -204,7 +216,6 @@ asyncio.run(run())
         """Set up resource limits for subprocess (Unix only)."""
         try:
             # Set memory limit
-            resource = __import__("resource")
             memory_bytes = self._memory_limit_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
@@ -239,11 +250,13 @@ asyncio.run(run())
                     result.output = output_str
                     result.success = True
 
-            # Log stderr if present
+            # Log stderr if present (sanitized to avoid leaking system details)
             if stderr:
                 error_str = stderr.decode("utf-8", errors="replace").strip()
                 if error_str:
-                    logger.warning(f"Subprocess stderr: {error_str}")
+                    # Only log length and first line to avoid leaking file paths or sensitive details
+                    first_line = error_str.split('\n')[0][:100]
+                    logger.warning(f"Subprocess error (first 100 chars): {first_line}")
 
             result.exit_code = process.returncode or 0
 
