@@ -1,8 +1,9 @@
 """
-Platform integration stubs for Demi.
-Provides grumbling implementations for Minecraft, Twitch, TikTok, and YouTube.
+Platform integrations for Demi.
+Provides both production integrations (Discord) and grumbling stubs (Minecraft, Twitch, TikTok, YouTube).
 """
 
+from src.integrations.discord_bot import DiscordBot
 from src.integrations.stubs import (
     PlatformStatus,
     BasePlatformStub,
@@ -11,6 +12,7 @@ from src.integrations.stubs import (
 )
 
 __all__ = [
+    "DiscordBot",
     "PlatformStatus",
     "BasePlatformStub",
     "create_platform_stubs",

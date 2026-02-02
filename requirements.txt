@@ -1,0 +1,31 @@
+# Demi v1 Dependencies
+# Core dependencies for local LLM companion assistant
+
+# LLM Integration
+# (Ollama installed separately - see docs)
+
+# Discord Integration (Phase 05)
+discord.py>=2.6.0
+
+# Database
+SQLAlchemy>=2.0.0
+alembic>=1.13.0
+
+# Emotional System & Personality
+# (No external dependencies - pure Python)
+
+# Conductor & Monitoring
+psutil>=5.9.0  # Resource monitoring
+prometheus-client>=0.20.0  # Metrics (optional)
+
+# Machine Learning (for predictive scaling)
+scikit-learn>=1.3.0  # Optional - falls back gracefully if unavailable
+
+# Logging
+structlog>=24.1.0  # Optional - falls back to standard logging
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
