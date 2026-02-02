@@ -1,1 +1,3 @@
-"""Demi - A companion with personality, emotions, and autonomy."""
+"""Demi - An autonomous AI companion with emotional systems"""
+
+__version__ = "0.1.0"
