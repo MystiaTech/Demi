@@ -141,6 +141,9 @@ class Conductor:
             emotion_persistence=self.emotion_persistence,
         )
 
+        # Autonomy coordinator (initialized after other systems are ready)
+        self.autonomy_coordinator = None
+
         # State tracking
         self._running = False
         self._startup_time: Optional[float] = None
@@ -272,7 +275,17 @@ class Conductor:
                 self._logger.error(f"plugin_loading_failed: {str(e)}")
                 return False
 
-            # Step 8: Register signal handlers
+            # Step 8: Initialize autonomy system
+            self._logger.info("Initializing autonomy system...")
+            try:
+                if not await self._start_autonomy_system():
+                    return False
+                self._logger.info("Autonomy system initialized")
+            except Exception as e:
+                self._logger.error(f"autonomy_system_initialization_failed: {str(e)}")
+                return False
+
+            # Step 9: Register signal handlers
             self._logger.info("Registering signal handlers...")
             try:
                 self._register_signal_handlers()
@@ -534,7 +547,14 @@ async def request_inference_for_platform(
             except Exception as e:
                 self._logger.error(f"plugin_shutdown_failed: {str(e)}")
 
-            # Step 3: Stop background loops
+            # Step 3: Stop autonomy system
+            self._logger.info("Stopping autonomy system...")
+            try:
+                await self._stop_autonomy_system()
+            except Exception as e:
+                self._logger.error(f"autonomy_system_shutdown_failed: {str(e)}")
+
+            # Step 4: Stop background loops
             self._logger.info("Stopping background tasks...")
             try:
                 self._health_monitor.stop()
@@ -673,6 +693,12 @@ async def request_inference_for_platform(
                 1 for p in self._plugin_manager.list_plugins() if p.is_loaded()
             )
 
+            # Add autonomy system status
+            if self.autonomy_coordinator:
+                autonomy_status = self.autonomy_coordinator.get_autonomy_status()
+                component_statuses["autonomy"] = "healthy" if autonomy_status.active else "inactive"
+                resource_usage["autonomy_tasks"] = autonomy_status.tasks_running
+
             # Determine overall status
             if not component_statuses:
                 overall_status = "initializing"
@@ -724,6 +750,87 @@ async def request_inference_for_platform(
         if self._startup_time is None:
             return 0
         return time.time() - self._startup_time
+
+    async def _start_autonomy_system(self) -> bool:
+        """
+        Start the unified autonomy system.
+
+        Returns:
+            True if autonomy system started successfully
+        """
+        try:
+            from src.autonomy.coordinator import AutonomyCoordinator
+
+            # Initialize autonomy coordinator
+            self.autonomy_coordinator = AutonomyCoordinator(
+                conductor=self,
+                logger=self._logger
+            )
+
+            # Start autonomy background tasks
+            if self.autonomy_coordinator.start_autonomy():
+                self._logger.info("Autonomy system started successfully")
+                return True
+            else:
+                self._logger.error("Failed to start autonomy system")
+                return False
+
+        except Exception as e:
+            self._logger.error(f"Error starting autonomy system: {e}")
+            return False
+
+    async def _stop_autonomy_system(self) -> None:
+        """Stop the unified autonomy system."""
+        try:
+            if self.autonomy_coordinator:
+                if self.autonomy_coordinator.stop_autonomy():
+                    self._logger.info("Autonomy system stopped successfully")
+                else:
+                    self._logger.warning("Failed to stop autonomy system gracefully")
+        except Exception as e:
+            self._logger.error(f"Error stopping autonomy system: {e}")
+
+    def send_discord_message(self, content: str, channel_id: str) -> bool:
+        """
+        Send message through Discord platform.
+
+        Args:
+            content: Message content to send
+            channel_id: Discord channel ID
+
+        Returns:
+            True if message sent successfully
+        """
+        try:
+            # Get Discord plugin from plugin manager
+            discord_plugin = self._plugin_manager.get_loaded_plugin("discord")
+            if discord_plugin and hasattr(discord_plugin, 'send_message'):
+                return discord_plugin.send_message(content, channel_id)
+            return False
+        except Exception as e:
+            self._logger.error(f"Failed to send Discord message: {e}")
+            return False
+
+    def send_android_websocket_message(self, content: str, device_id: str) -> bool:
+        """
+        Send message through Android WebSocket platform.
+
+        Args:
+            content: Message content to send
+            device_id: Android device ID
+
+        Returns:
+            True if message sent successfully
+        """
+        try:
+            # Get Android plugin from plugin manager
+            android_plugin = self._plugin_manager.get_loaded_plugin("android")
+            if android_plugin and hasattr(android_plugin, 'send_websocket_message'):
+                return android_plugin.send_websocket_message(content, device_id)
+            return False
+        except Exception as e:
+            self._logger.error(f"Failed to send Android WebSocket message: {e}")
+            return False
 
 
 # Global conductor instance
