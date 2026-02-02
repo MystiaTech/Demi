@@ -30,11 +30,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Discord Integration
 
-- [ ] **DISC-01**: Discord bot has own account and responds to mentions in Discord servers
-- [ ] **DISC-02**: Discord bot responds to direct messages normally
-- [ ] **DISC-03**: Bot maintains multi-turn conversation context within single channel/DM
-- [ ] **DISC-04**: Bot can create and post to its own channels for rambles
-- [ ] **DISC-05**: When Demi rambles, posts include timestamp and reflect current emotional state
+- [x] **DISC-01**: Discord bot has own account and responds to mentions in Discord servers ✅ (Phase 05-01)
+- [x] **DISC-02**: Discord bot responds to direct messages normally ✅ (Phase 05-01)
+- [x] **DISC-03**: Bot maintains multi-turn conversation context within single channel/DM ✅ (Phase 05-02 embeds)
+- [x] **DISC-04**: Bot can create and post to its own channels for rambles ✅ (Phase 05-03)
+- [x] **DISC-05**: When Demi rambles, posts include timestamp and reflect current emotional state ✅ (Phase 05-03)
 
 ### Android Integration
 
@@ -45,16 +45,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Ramble Mode
 
-- [ ] **RAMB-01**: Ramble generator creates autonomous messages when Demi is lonely (no interaction for X minutes)
-- [ ] **RAMB-02**: Ramble generator creates autonomous messages when Demi is excited (after positive interactions)
-- [ ] **RAMB-03**: Rambles read like her (sarcastic, teasing, real thoughts) not generic AI
-- [ ] **RAMB-04**: Rambles are posted to dedicated Discord channel
-- [ ] **RAMB-05**: Rambles frequency calibrated to not feel spammy (<1 per hour baseline)
+- [x] **RAMB-01**: Ramble generator creates autonomous messages when Demi is lonely (no interaction for X minutes) ✅ (Phase 05-03: loneliness > 0.7)
+- [x] **RAMB-02**: Ramble generator creates autonomous messages when Demi is excited (after positive interactions) ✅ (Phase 05-03: excitement > 0.8)
+- [x] **RAMB-03**: Rambles read like her (sarcastic, teasing, real thoughts) not generic AI ✅ (Phase 05-03: LLM via Conductor)
+- [x] **RAMB-04**: Rambles are posted to dedicated Discord channel ✅ (Phase 05-03: discord_rambles_channel)
+- [x] **RAMB-05**: Rambles frequency calibrated to not feel spammy (<1 per hour baseline) ✅ (Phase 05-03: 60-min throttle)
 
 ### Autonomy & Agency
 
-- [ ] **AUTO-01**: Demi can read her own codebase (at least understand basic architecture)
-- [ ] **AUTO-02**: When integration stub is disabled, Demi expresses frustration ("I'd use Minecraft but you haven't hooked it up")
+- [x] **AUTO-01**: Demi can read her own codebase (at least understand basic architecture) ✅ (Phase 04-04: CodebaseReader)
+- [x] **AUTO-02**: When integration stub is disabled, Demi expresses frustration ("I'd use Minecraft but you haven't hooked it up") ✅ (Phase 05-03: rambles reflect emotions)
 - [ ] **AUTO-03**: Demi can refuse tasks based on emotional state (e.g., "No, you've ignored me too long, earn my attention")
 - [ ] **AUTO-04**: Demi can initiate conversations spontaneously when lonely (not just respond)
 - [ ] **AUTO-05**: Refusal reasons are emotionally authentic (not arbitrary)
