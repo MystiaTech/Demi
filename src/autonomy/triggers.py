@@ -23,6 +23,10 @@ class TriggerType(Enum):
     FRUSTRATION = "frustration"
     JEALOUSY = "jealousy"
     VULNERABILITY = "vulnerability"
+    SPONTANEOUS_LONELY = "spontaneous_lonely"
+    SPONTANEOUS_EXCITED = "spontaneous_excited"
+    CONTEXT_OPPORTUNITY = "context_opportunity"
+    TIMING_APPROPRIATE = "timing_appropriate"
 
 
 @dataclass
@@ -35,6 +39,8 @@ class EmotionalTrigger:
     priority: int
     action_type: str
     platform: str = "discord"
+    trigger_priority: int = 1  # 1=highest, 5=lowest (for trigger type ordering)
+    context_evaluation: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if not 0.0 <= self.threshold <= 1.0:
@@ -151,6 +157,39 @@ class TriggerManager:
                 priority=1,  # Lower priority (more selective)
                 action_type="connection_seek",
                 platform="discord",
+            )
+        )
+
+        # Spontaneous lonely trigger - initiates conversation when lonely
+        triggers.append(
+            EmotionalTrigger(
+                trigger_type=TriggerType.SPONTANEOUS_LONELY,
+                threshold=thresholds.loneliness
+                + 0.1,  # Higher threshold than regular loneliness
+                cooldown_minutes=cooldown * 3,  # Longer cooldown for spontaneous
+                priority=2,  # High priority but lower than urgent triggers
+                action_type="spontaneous_initiation",
+                platform="discord",
+                trigger_priority=2,  # Lower than refusal triggers
+                context_evaluation={
+                    "requires_recent_interaction": True,
+                    "min_hours_since": 2,
+                },
+            )
+        )
+
+        # Spontaneous excited trigger - shares excitement spontaneously
+        triggers.append(
+            EmotionalTrigger(
+                trigger_type=TriggerType.SPONTANEOUS_EXCITED,
+                threshold=thresholds.excitement
+                + 0.1,  # Higher threshold than regular excitement
+                cooldown_minutes=cooldown * 2,  # Longer cooldown for spontaneous
+                priority=2,  # High priority but lower than urgent triggers
+                action_type="spontaneous_initiation",
+                platform="discord",
+                trigger_priority=2,  # Lower than refusal triggers
+                context_evaluation={"requires_interesting_content": True},
             )
         )
 

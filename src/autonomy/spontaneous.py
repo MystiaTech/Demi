@@ -315,21 +315,30 @@ class SpontaneousInitiator:
 
     def __init__(
         self,
-        inference: OllamaInference,
         config: AutonomyConfig,
         logger: Optional[DemiLogger] = None,
+        inference: Optional[OllamaInference] = None,
     ):
         """
         Initialize spontaneous initiator.
 
         Args:
-            inference: LLM inference engine
             config: Autonomy configuration
             logger: Optional logger instance
+            inference: Optional LLM inference engine (will be created if not provided)
         """
-        self.inference = inference
         self.config = config
         self.logger = logger or DemiLogger()
+
+        # Initialize inference if not provided
+        if inference is None:
+            from src.llm.config import LLMConfig
+            from src.llm.inference import OllamaInference
+
+            llm_config = LLMConfig()
+            self.inference = OllamaInference(llm_config, self.logger)
+        else:
+            self.inference = inference
 
         self.emotion_persistence = EmotionPersistence()
         self.prompt_builder = SpontaneousPromptBuilder()

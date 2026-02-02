@@ -70,6 +70,9 @@ class AutonomyCoordinator:
         # Initialize refusal system
         self.refusal_system = RefusalSystem(self.logger)
 
+        # Initialize spontaneous initiator (will be created if needed)
+        self.spontaneous_initiator = None
+
         # Task management
         self.background_tasks: Dict[str, asyncio.Task] = {}
         self.is_running = False
@@ -199,6 +202,9 @@ class AutonomyCoordinator:
 
         trigger_manager = TriggerManager(self.config, self.logger)
         triggered_actions = trigger_manager.evaluate_triggers(emotion_state)
+
+        # Check for spontaneous initiation opportunities
+        await self._check_spontaneous_initiation(emotion_state)
 
         for action_spec in triggered_actions:
             # Check refusal system before creating action
@@ -372,6 +378,133 @@ class AutonomyCoordinator:
 
         self.current_status.last_autonomous_action = datetime.now(UTC)
         self.logger.info(f"Executed autonomous action: {action_type} on {platform}")
+
+    async def _check_spontaneous_initiation(self, emotion_state: EmotionalState):
+        """
+        Check for spontaneous initiation opportunities and create actions if appropriate.
+
+        Args:
+            emotion_state: Current emotional state
+        """
+        # Initialize spontaneous initiator if needed
+        if self.spontaneous_initiator is None:
+            try:
+                from src.autonomy.spontaneous import SpontaneousInitiator
+
+                self.spontaneous_initiator = SpontaneousInitiator(
+                    self.config, self.logger
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to initialize spontaneous initiator: {e}")
+                return
+
+        try:
+            # Get conversation history from conductor if available
+            conversation_history = []
+            user_activity = {}
+            last_interaction_time = None
+
+            if hasattr(self.conductor, "get_conversation_history"):
+                conversation_history = self.conductor.get_conversation_history()
+
+            # Get user activity patterns (simplified)
+            if hasattr(self.conductor, "get_user_activity"):
+                user_activity = self.conductor.get_user_activity()
+
+            # Check for initiation opportunity
+            opportunity = await self.spontaneous_initiator.should_initiate(
+                emotion_state,
+                conversation_history,
+                last_interaction_time,
+                user_activity,
+            )
+
+            if opportunity:
+                # Generate spontaneous message
+                message = await self.spontaneous_initiator.generate_spontaneous_message(
+                    opportunity, emotion_state
+                )
+
+                # Create autonomous action for spontaneous initiation
+                action = AutonomousAction(
+                    action_type="spontaneous_initiation",
+                    platform=opportunity.suggested_platform,
+                    content=message,
+                    context={
+                        "trigger_type": opportunity.trigger_type.value,
+                        "initiation_reason": opportunity.initiation_reason,
+                        "confidence": opportunity.confidence,
+                        "channel_id": self.config.platform_settings.ramble_channel_id,
+                        "device_id": "default",
+                    },
+                    priority=2,  # High priority but lower than urgent triggers
+                )
+
+                self.pending_actions.append(action)
+                self.logger.info(
+                    f"Created spontaneous initiation action: {opportunity.trigger_type.value} on {opportunity.suggested_platform}"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error checking spontaneous initiation: {e}")
+
+    async def initiate_conversation(
+        self, platform: str, context: Dict[str, Any]
+    ) -> bool:
+        """
+        Initiate a conversation on the specified platform.
+
+        Args:
+            platform: Target platform
+            context: Conversation context and parameters
+
+        Returns:
+            True if initiation was successful
+        """
+        try:
+            # Use existing action execution system
+            return await self.execute_autonomous_action(
+                "spontaneous_initiation",
+                {
+                    "platform": platform,
+                    "content": context.get("content", ""),
+                    "channel_id": context.get("channel_id"),
+                    "device_id": context.get("device_id", "default"),
+                },
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to initiate conversation on {platform}: {e}")
+            return False
+
+    def track_initiation_outcome(
+        self, platform: str, success: bool, outcome_details: Dict[str, Any]
+    ):
+        """
+        Track the outcome of a spontaneous initiation.
+
+        Args:
+            platform: Platform where initiation occurred
+            success: Whether the initiation was successful
+            outcome_details: Additional outcome details
+        """
+        log_entry = {
+            "platform": platform,
+            "success": success,
+            "outcome_details": outcome_details,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "type": "spontaneous_initiation_outcome",
+        }
+
+        # Track in action history
+        self.action_history.append(log_entry)
+
+        # Trim history if too large
+        if len(self.action_history) > self.max_history_size:
+            self.action_history = self.action_history[-self.max_history_size :]
+
+        self.logger.info(
+            f"Tracked spontaneous initiation outcome on {platform}: {success}"
+        )
 
     def _log_refused_action(self, context: Dict[str, Any], refusal_analysis):
         """Log refused autonomous action."""
