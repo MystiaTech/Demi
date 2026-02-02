@@ -95,6 +95,30 @@ See `DEMI_PERSONA.md` for full character details and response patterns.
 - Stable internet connection (only for Ollama model download + Discord)
 - Local network access to Android phone (Wi-Fi)
 
+## Ramble Configuration
+
+Demi posts spontaneous rambles to Discord when emotionally triggered.
+
+**Setup:**
+
+1. **Create a Discord channel:** `#demi-rambles`
+2. **Get channel ID:** Right-click channel → Copy Channel ID (enable Developer Mode first)
+3. **Set environment variable:**
+   ```bash
+   export DISCORD_RAMBLE_CHANNEL_ID=<your-channel-id>
+   ```
+
+**Ramble Triggers:**
+
+Demi will post spontaneous thoughts when:
+- **Lonely** (loneliness > 0.7) - Missing interaction, seeking connection
+- **Excited** (excitement > 0.8) - Feeling social, has something to share
+- **Frustrated** (frustration > 0.6) - Needs to vent, express feelings
+
+**Spam Prevention:**
+
+Rambles post at most **every 60 minutes** to avoid overwhelming the channel.
+
 ## Getting Started
 
 1. **Read the project docs**
