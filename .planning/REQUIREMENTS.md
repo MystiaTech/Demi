@@ -137,56 +137,56 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COND-01 | Phase 1 | Pending |
-| COND-02 | Phase 1 | Pending |
-| COND-03 | Phase 1 | Pending |
-| COND-04 | Phase 1 | Pending |
-| EMOT-01 | Phase 2 | Pending |
-| EMOT-02 | Phase 2 | Pending |
-| EMOT-03 | Phase 2 | Pending |
-| EMOT-04 | Phase 2 | Pending |
-| EMOT-05 | Phase 2 | Pending |
-| PERS-01 | Phase 2 | Pending |
-| PERS-02 | Phase 2 | Pending |
-| PERS-03 | Phase 2 | Pending |
-| DISC-01 | Phase 3 | Pending |
-| DISC-02 | Phase 3 | Pending |
-| DISC-03 | Phase 3 | Pending |
-| DISC-04 | Phase 3 | Pending |
-| DISC-05 | Phase 3 | Pending |
-| ANDR-01 | Phase 4 | Pending |
-| ANDR-02 | Phase 4 | Pending |
-| ANDR-03 | Phase 4 | Pending |
-| ANDR-04 | Phase 4 | Pending |
-| RAMB-01 | Phase 5 | Pending |
-| RAMB-02 | Phase 5 | Pending |
-| RAMB-03 | Phase 5 | Pending |
-| RAMB-04 | Phase 5 | Pending |
-| RAMB-05 | Phase 5 | Pending |
-| AUTO-01 | Phase 3 | Pending |
-| AUTO-02 | Phase 3 | Pending |
-| AUTO-03 | Phase 5 | Pending |
-| AUTO-04 | Phase 5 | Pending |
-| AUTO-05 | Phase 5 | Pending |
-| LLM-01 | Phase 3 | Pending |
-| LLM-02 | Phase 3 | Pending |
-| LLM-03 | Phase 3 | Pending |
-| LLM-04 | Phase 3 | Pending |
+| COND-01 | Phase 2 | Pending |
+| COND-02 | Phase 2 | Pending |
+| COND-03 | Phase 2 | Pending |
+| COND-04 | Phase 2 | Pending |
+| EMOT-01 | Phase 3 | Pending |
+| EMOT-02 | Phase 3 | Pending |
+| EMOT-03 | Phase 3 | Pending |
+| EMOT-04 | Phase 3 | Pending |
+| EMOT-05 | Phase 3 | Pending |
+| PERS-01 | Phase 3 | Pending |
+| PERS-02 | Phase 3 | Pending |
+| PERS-03 | Phase 3 | Pending |
+| DISC-01 | Phase 5 | Pending |
+| DISC-02 | Phase 5 | Pending |
+| DISC-03 | Phase 5 | Pending |
+| DISC-04 | Phase 5 | Pending |
+| DISC-05 | Phase 5 | Pending |
+| ANDR-01 | Phase 6 | Pending |
+| ANDR-02 | Phase 6 | Pending |
+| ANDR-03 | Phase 6 | Pending |
+| ANDR-04 | Phase 6 | Pending |
+| RAMB-01 | Phase 7 | Pending |
+| RAMB-02 | Phase 7 | Pending |
+| RAMB-03 | Phase 7 | Pending |
+| RAMB-04 | Phase 7 | Pending |
+| RAMB-05 | Phase 7 | Pending |
+| AUTO-01 | Phase 4 | Pending |
+| AUTO-02 | Phase 5 | Pending |
+| AUTO-03 | Phase 7 | Pending |
+| AUTO-04 | Phase 7 | Pending |
+| AUTO-05 | Phase 7 | Pending |
+| LLM-01 | Phase 4 | Pending |
+| LLM-02 | Phase 8 | Pending |
+| LLM-03 | Phase 4 | Pending |
+| LLM-04 | Phase 4 | Pending |
 | STUB-01 | Phase 1 | Pending |
 | STUB-02 | Phase 1 | Pending |
 | STUB-03 | Phase 1 | Pending |
 | STUB-04 | Phase 1 | Pending |
-| HEALTH-01 | Phase 6 | Pending |
-| HEALTH-02 | Phase 6 | Pending |
-| HEALTH-03 | Phase 6 | Pending |
-| HEALTH-04 | Phase 6 | Pending |
+| HEALTH-01 | Phase 9 | Pending |
+| HEALTH-02 | Phase 9 | Pending |
+| HEALTH-03 | Phase 9 | Pending |
+| HEALTH-04 | Phase 9 | Pending |
 
 **Coverage:**
 - v1 requirements: 40 total
-- Mapped to phases: 40 (pending phase creation)
+- Mapped to phases: 40 ✓
 - Unmapped: 0 ✓
 
 ---
 
 *Requirements defined: 2026-02-01*
-*Last updated: 2026-02-01 after initial definition*
+*Last updated: 2026-02-01 after roadmap creation*
