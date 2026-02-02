@@ -32,7 +32,13 @@ class OllamaInference:
     health checks, and comprehensive error handling.
     """
 
-    def __init__(self, config: LLMConfig, logger: DemiLogger, response_processor=None):
+    def __init__(
+        self,
+        config: LLMConfig,
+        logger: DemiLogger,
+        response_processor=None,
+        codebase_reader=None,
+    ):
         """
         Initialize OllamaInference client.
 
@@ -40,12 +46,14 @@ class OllamaInference:
             config: LLMConfig with model and timeout settings
             logger: DemiLogger instance for logging
             response_processor: Optional ResponseProcessor for post-processing responses
+            codebase_reader: Optional CodebaseReader for code context injection
         """
         self.config = config
         self.logger = logger
         self._tokenizer = None
         self._tokenizer_attempted = False
         self.response_processor = response_processor
+        self.codebase_reader = codebase_reader
         self.logger.debug(
             f"OllamaInference initialized with model: {config.model_name}"
         )

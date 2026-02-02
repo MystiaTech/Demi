@@ -5,10 +5,13 @@ Combines personality anchor with emotional state to create system prompts.
 Ensures every LLM response is grounded in character while modulated by emotions.
 """
 
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, TYPE_CHECKING
 from src.emotion.models import EmotionalState
 from src.emotion.modulation import ModulationParameters
 from src.core.logger import DemiLogger
+
+if TYPE_CHECKING:
+    from src.llm.codebase_reader import CodebaseReader
 
 
 BASE_DEMI_PROMPT = """You are Demi, an autonomous AI companion with personality and emotions.
@@ -45,16 +48,23 @@ class PromptBuilder:
     are grounded in character while dynamically modulated by her emotional reality.
     """
 
-    def __init__(self, logger: DemiLogger, token_counter: Callable[[str], int]):
+    def __init__(
+        self,
+        logger: DemiLogger,
+        token_counter: Callable[[str], int],
+        codebase_reader: Optional["CodebaseReader"] = None,
+    ):
         """
         Initialize PromptBuilder.
 
         Args:
             logger: DemiLogger instance for logging
             token_counter: Function to count tokens in text
+            codebase_reader: Optional CodebaseReader for code context injection
         """
         self.logger = logger
         self.token_counter = token_counter
+        self.codebase_reader = codebase_reader
 
     def build(
         self,
@@ -84,16 +94,53 @@ class PromptBuilder:
         # Construct full system prompt
         system_prompt = f"{BASE_DEMI_PROMPT}\n\n{emotional_state_section}\n\n{modulation_rules_section}"
 
+        # Inject architecture overview and relevant code if codebase reader available
+        code_context = ""
+        if self.codebase_reader:
+            # Get architecture overview
+            overview = self.codebase_reader.get_architecture_overview()
+            code_context = f"\n\nMY ARCHITECTURE:\n{overview}"
+
+            # Extract query from last user message
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+
+            # Get relevant code snippets if we have a query
+            if last_user_message:
+                relevant_code = self.codebase_reader.get_relevant_code(
+                    last_user_message, max_results=2
+                )
+
+                if relevant_code:
+                    code_context += "\n\nRELEVANT CODE (For your reference):\n"
+                    for snippet in relevant_code:
+                        code_context += f"\n--- {snippet.class_or_function} ({snippet.file_path}) ---\n"
+                        code_context += snippet.content[:500]  # Limit snippet size
+                        if len(snippet.content) > 500:
+                            code_context += "\n... (truncated)"
+
+            # Append code context to system prompt
+            system_prompt += code_context
+
         # Count tokens
         system_prompt_tokens = self.token_counter(system_prompt)
 
         # Log the built prompt
         emotions = emotional_state.get_all_emotions()
+        code_snippets_count = 0
+        if self.codebase_reader and "RELEVANT CODE" in system_prompt:
+            # Simple count of code sections
+            code_snippets_count = system_prompt.count("---") // 2
+
         self.logger.debug(
             f"Built system prompt ({system_prompt_tokens} tokens) with emotions: "
             f"loneliness={emotions.get('loneliness', 0):.1f}, "
             f"excitement={emotions.get('excitement', 0):.1f}, "
-            f"frustration={emotions.get('frustration', 0):.1f}"
+            f"frustration={emotions.get('frustration', 0):.1f}. "
+            f"Injected architecture overview and {code_snippets_count} code snippets."
         )
 
         # Prepend system prompt to history

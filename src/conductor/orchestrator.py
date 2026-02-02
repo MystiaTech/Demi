@@ -27,7 +27,17 @@ from src.conductor.scaler import PredictiveScaler
 from src.conductor.router import RequestRouter
 from src.conductor.metrics import get_metrics
 from src.conductor.circuit_breaker import get_circuit_breaker_manager
-from src.llm import OllamaInference, LLMConfig, InferenceError
+from src.llm import (
+    OllamaInference,
+    LLMConfig,
+    InferenceError,
+    CodebaseReader,
+    PromptBuilder,
+    ConversationHistory,
+    ResponseProcessor,
+)
+from src.emotion.persistence import EmotionPersistence
+from src.emotion.modulation import PersonalityModulator
 
 logger = get_logger()
 
@@ -79,11 +89,57 @@ class Conductor:
         # Database
         self._db_manager = DatabaseManager(self._config)
 
-        # LLM inference engine
+        # Codebase reader for self-awareness
+        self.codebase_reader = CodebaseReader(logger=self._logger)
+
+        # LLM inference engine with codebase context
         self.llm = OllamaInference(
-            LLMConfig.from_global_config(self._config), self._logger
+            config=LLMConfig.from_global_config(self._config),
+            logger=self._logger,
+            codebase_reader=self.codebase_reader,
         )
         self.llm_available = False
+
+        # Emotion and personality systems (lazy initialization to avoid circular deps)
+        self.emotion_persistence = None
+        self.personality_modulator = None
+
+        # Prompt builder with codebase context
+        self.prompt_builder = PromptBuilder(
+            logger=self._logger,
+            token_counter=self.llm._count_tokens,
+            codebase_reader=self.codebase_reader,
+        )
+
+        # Conversation history manager
+        self.conversation_history = ConversationHistory(logger=self._logger)
+
+        # Response processor (will be initialized when needed)
+        self.response_processor = None
+        self.llm_available = False
+
+        # Emotion and personality systems
+        self.emotion_persistence = EmotionPersistence(
+            db_manager=self._db_manager, logger=self._logger
+        )
+        self.personality_modulator = PersonalityModulator(logger=self._logger)
+
+        # Prompt builder with codebase context
+        self.prompt_builder = PromptBuilder(
+            logger=self._logger,
+            token_counter=self.llm._count_tokens,
+            codebase_reader=self.codebase_reader,
+        )
+
+        # Conversation history manager
+        self.conversation_history = ConversationHistory(logger=self._logger)
+
+        # Response processor
+        self.response_processor = ResponseProcessor(
+            logger=self._logger,
+            token_counter=self.llm._count_tokens,
+            emotion_persistence=self.emotion_persistence,
+        )
 
         # State tracking
         self._running = False
