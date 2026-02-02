@@ -434,12 +434,12 @@ class Conductor:
             self._logger.exception(f"Unexpected error during inference: {str(e)}")
             return "I'm not ready to talk right now... wait a sec?"
 
-async def request_inference_for_platform(
-        self, 
-        platform: str, 
-        user_id: str, 
-        content: str, 
-        context: Optional[Dict[str, Any]] = None
+    async def request_inference_for_platform(
+        self,
+        platform: str,
+        user_id: str,
+        content: str,
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Request inference from LLM for platform-specific message.
@@ -464,16 +464,15 @@ async def request_inference_for_platform(
             }
 
         try:
-# Load user's emotional state
+            # Load user's emotional state
             emotion_state = await self.emotion_persistence.load_state(user_id)
-            
+
             # Build conversation history with current message
             messages = [{"role": "user", "content": content}]
-            
+
             # Add system prompt with emotion state
             system_prompt = self.prompt_builder.build(
-                emotional_state=emotion_state,
-                codebase_reader=self.codebase_reader
+                emotional_state=emotion_state, codebase_reader=self.codebase_reader
             )
 
             # Prepend system prompt to messages
@@ -696,7 +695,9 @@ async def request_inference_for_platform(
             # Add autonomy system status
             if self.autonomy_coordinator:
                 autonomy_status = self.autonomy_coordinator.get_autonomy_status()
-                component_statuses["autonomy"] = "healthy" if autonomy_status.active else "inactive"
+                component_statuses["autonomy"] = (
+                    "healthy" if autonomy_status.active else "inactive"
+                )
                 resource_usage["autonomy_tasks"] = autonomy_status.tasks_running
 
             # Determine overall status
@@ -763,8 +764,7 @@ async def request_inference_for_platform(
 
             # Initialize autonomy coordinator
             self.autonomy_coordinator = AutonomyCoordinator(
-                conductor=self,
-                logger=self._logger
+                conductor=self, logger=self._logger
             )
 
             # Start autonomy background tasks
@@ -804,7 +804,7 @@ async def request_inference_for_platform(
         try:
             # Get Discord plugin from plugin manager
             discord_plugin = self._plugin_manager.get_loaded_plugin("discord")
-            if discord_plugin and hasattr(discord_plugin, 'send_message'):
+            if discord_plugin and hasattr(discord_plugin, "send_message"):
                 return discord_plugin.send_message(content, channel_id)
             return False
         except Exception as e:
@@ -825,7 +825,7 @@ async def request_inference_for_platform(
         try:
             # Get Android plugin from plugin manager
             android_plugin = self._plugin_manager.get_loaded_plugin("android")
-            if android_plugin and hasattr(android_plugin, 'send_websocket_message'):
+            if android_plugin and hasattr(android_plugin, "send_websocket_message"):
                 return android_plugin.send_websocket_message(content, device_id)
             return False
         except Exception as e:
