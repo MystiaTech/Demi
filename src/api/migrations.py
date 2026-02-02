@@ -4,6 +4,7 @@ from src.core.logger import DemiLogger
 
 logger = DemiLogger()
 
+
 def get_db_path() -> str:
     """Get database path from environment or config"""
     # Try DATABASE_URL first
@@ -13,9 +14,11 @@ def get_db_path() -> str:
 
     # Fall back to config-based path
     from pathlib import Path
+
     demi_dir = Path(os.getenv("DEMI_DATA_DIR", "~/.demi")).expanduser()
     demi_dir.mkdir(parents=True, exist_ok=True)
     return str(demi_dir / "demi.sqlite")
+
 
 def create_users_table():
     """Create users table if not exists"""
@@ -41,6 +44,7 @@ def create_users_table():
         """)
         conn.commit()
         logger.info("Users table created/verified")
+
 
 def create_sessions_table():
     """Create sessions table for multi-device support"""
@@ -68,7 +72,43 @@ def create_sessions_table():
         conn.commit()
         logger.info("Sessions table created/verified")
 
+
+def create_android_messages_table():
+    """Create messages table with read receipts"""
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS android_messages (
+            message_id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            content TEXT NOT NULL,
+            emotion_state JSON,
+            status TEXT DEFAULT 'sent',
+            delivered_at TIMESTAMP,
+            read_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        )
+        """)
+        # Index for conversation queries
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation
+        ON android_messages(conversation_id, created_at DESC)
+        """)
+        # Index for unread messages
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_unread
+        ON android_messages(user_id, status, sender)
+        WHERE status != 'read' AND sender = 'demi'
+        """)
+        conn.commit()
+        logger.info("Android messages table created/verified")
+
+
 def run_all_migrations():
     """Run all database migrations"""
     create_users_table()
     create_sessions_table()
+    create_android_messages_table()
