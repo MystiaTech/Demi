@@ -1,10 +1,10 @@
 # STATE.md — Demi v1 Project Memory
 
-**Last Updated:** 2026-02-02T15:30:00Z
+**Last Updated:** 2026-02-02T16:03:00Z
 **Current Phase:** Phase 04 — LLM Integration (IN PROGRESS)
-**Current Plan:** 04-01 — LLM Inference Engine Foundation (COMPLETE)
-**Next Plan:** 04-02 — Prompt Builder & Emotional Modulation
-**Overall Progress:** 73% (Phase 01: 4/4, Phase 02: 5/5, Phase 03: 4/4, Phase 04: 1/4 complete)
+**Current Plan:** 04-02 — Prompt Builder & Emotional Modulation (COMPLETE)
+**Next Plan:** 04-03 — Response Processor (Wave 2, can parallelize with 04-04)
+**Overall Progress:** 75% (Phase 01: 4/4, Phase 02: 5/5, Phase 03: 4/4, Phase 04: 2/4 complete)
 
 ---
 
@@ -28,17 +28,17 @@
 ## Current Position
 
 **Phase:** Phase 04 — LLM Integration (IN PROGRESS)
-**Current Plan:** 04-01 — LLM Inference Engine Foundation (COMPLETE)
-**Status:** 1/4 plans complete in phase
+**Current Plan:** 04-02 — Prompt Builder & Emotional Modulation (COMPLETE)
+**Status:** 2/4 plans complete in phase
 
 **Progress:**
 ```
 [████████████████████████████████████████████████████████████████████████████████] 100% (Roadmap)
-[███████████████████████████████████████████████████████████░░░░░░░░░░░░░░░░░░░░] 73% (Overall)
+[█████████████████████████████████████████████████████████████░░░░░░░░░░░░░░░░] 75% (Overall)
 [████████████████████████████████████████] 100% (Phase 1: Foundation)
 [████████████████████████████████████████] 100% (Phase 2: Conductor)
 [████████████████████████████████████████] 100% (Phase 3: Emotional System)
-[███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 25% (Phase 4: LLM Integration)
+[██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░] 50% (Phase 4: LLM Integration)
 ```
 
 **Completed Plans:**
@@ -56,6 +56,7 @@
 - ✅ 03-03: Personality Modulation Engine (PersonalityModulator, modulation parameters, 27 tests, 69 total emotion tests)
 - ✅ 03-04: Persistence Layer & Validation (EmotionPersistence, offline decay, E2E tests, 81 total tests)
 - ✅ 04-01: LLM Inference Engine Foundation (OllamaInference, context trimming, token counting, 27 tests)
+- ✅ 04-02: Prompt Builder & Emotional Modulation (PromptBuilder, ConversationHistory, 53 tests)
 
 **Phase Output Summary (Phase 03):**
 - Emotional state model with 9 dimensions (loneliness, excitement, frustration, jealousy, vulnerability, confidence, curiosity, affection, defensiveness)
@@ -466,6 +467,61 @@
 
 ---
 
-**State file created:** 2026-02-01
-**Ready for Phase 1 implementation.**
+### Current Session (2026-02-02 - Phase 04 Plan 02 Execution)
+
+**Plan Executed:** 04-02 — Prompt Builder & Emotional Modulation (Wave 2)
+
+**All 3 Tasks Completed:**
+
+1. **Task 1: Create PromptBuilder with personality anchor and emotional modulation** ✅
+   - PromptBuilder class with BASE_DEMI_PROMPT constant (370 tokens)
+   - Build method constructs system prompts with all 9 emotional dimensions
+   - Emotion scaling: 0-1 internal → 0-10 display (desperate/okay/lonely descriptions)
+   - Modulation rules injected: lonely→longer/sharper, frustrated→short/cutting, excited→warm
+   - Integration with PersonalityModulator.modulate() for modulation parameters
+   - Logging of system prompt tokens and emotion values
+
+2. **Task 2: Create ConversationHistory manager with token-aware trimming** ✅
+   - ConversationHistory class with 8K context window management
+   - Message dataclass stores role, content, timestamp, emotional context
+   - trim_for_inference() removes oldest messages while preserving last user message
+   - get_conversation_window() for display/debugging
+   - summarize() provides conversation statistics (message count, token count, turns)
+   - Token counting with fallback estimation (1 token ≈ 4 chars)
+
+3. **Task 3: Integration tests for prompt building and history** ✅
+   - 17 unit tests for PromptBuilder (basics, emotions, descriptions, logging)
+   - 24 unit tests for ConversationHistory (message mgmt, trimming, window, summarization)
+   - 12 integration tests (full flow, emotional modulation, token limits, edge cases)
+   - All 53 tests passing (100%) - no failures
+
+**Test Results:** 53/53 passing (100%) ✅
+
+**Artifacts Created:**
+- src/llm/prompt_builder.py (275 lines)
+- src/llm/history_manager.py (210 lines)
+- tests/test_llm_prompt_builder.py (330 lines)
+- tests/test_history_manager.py (285 lines)
+- tests/test_llm_prompt_integration.py (345 lines)
+- .planning/phases/04-llm-integration/04-02-SUMMARY.md
+
+**Commits:** 3 atomic commits (prompt builder + history, test suite, summary docs)
+
+**Wave 2 Status:** ✅ COMPLETE
+
+**Next:** Phase 04-03 (Response Processor) — Ready to start. Phase 04-02 provides stable API for:
+- System prompts with emotional modulation
+- Conversation history management
+- Token-aware trimming to fit context window
+
+**Auto-fixed Issues:**
+- [Rule 1] Emotion scale mismatch: Added 0-1 → 0-10 scaling in prompt display
+- [Rule 1] Logger fixture: Changed `DemiLogger("test")` to `DemiLogger()`
+- [Rule 1] Missing argument: Added `system_prompt_tokens` to trim_for_inference call
+
+---
+
+**State file updated:** 2026-02-02T16:03:00Z
+**Progress:** 75% (Phase 04: 2/4 complete)
+**Ready for Phase 04-03 and 04-04 implementation.**
 
