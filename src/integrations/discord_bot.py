@@ -5,7 +5,7 @@ Provides Discord presence, message routing, and bidirectional communication.
 
 import os
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 
 import discord
 from discord.ext import commands
@@ -13,6 +13,101 @@ from discord.ext import commands
 from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
 from datetime import datetime
+
+
+# Emotion to Discord color mapping
+EMOTION_COLORS = {
+    "loneliness": discord.Color.purple(),      # 0x9370DB
+    "excitement": discord.Color.green(),       # 0x2ECC71
+    "frustration": discord.Color.red(),        # 0xE74C3C
+    "affection": discord.Color.magenta(),      # 0xFF1493 (hot pink)
+    "confidence": discord.Color.blue(),        # 0x3498DB
+    "curiosity": discord.Color.teal(),         # 0x1ABC9C (cyan)
+    "jealousy": discord.Color.orange(),        # 0xE67E22
+    "vulnerability": discord.Color.magenta(),  # 0xD946EF
+    "defensiveness": discord.Color.dark_gray(),# 0x36393B
+}
+
+
+def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Color]:
+    """
+    Given emotion_state dict with emotion dimensions, find dominant emotion.
+
+    Args:
+        emotion_state: Dict like {"loneliness": 0.5, "excitement": 0.8, ...}
+
+    Returns:
+        Tuple of (emotion_name, discord.Color)
+
+    Example:
+        emotion, color = get_dominant_emotion({"excitement": 0.8, "loneliness": 0.2})
+        # Returns ("excitement", discord.Color.green())
+    """
+    if not emotion_state:
+        return "neutral", discord.Color.blurple()  # Discord blurple as fallback
+
+    max_emotion = max(emotion_state.items(), key=lambda x: x[1])
+    emotion_name = max_emotion[0]
+    color = EMOTION_COLORS.get(emotion_name, discord.Color.blurple())
+    return emotion_name, color
+
+
+def format_response_as_embed(
+    response_dict: Dict,
+    user_name: str = "User"
+) -> discord.Embed:
+    """
+    Format LLM response as Discord embed with emotion visualization.
+
+    Args:
+        response_dict: Response from conductor.request_inference() with keys:
+            - "content": str (the message text)
+            - "emotion_state": Dict (emotional state before response)
+            - "message_id": str (optional, for tracking)
+        user_name: Name of user who sent message (for reply context)
+
+    Returns:
+        discord.Embed ready to send
+    """
+    content = response_dict.get("content", "Error generating response")
+    emotion_state = response_dict.get("emotion_state", {})
+    message_id = response_dict.get("message_id", "")
+
+    # Get dominant emotion for color
+    dominant_emotion, color = get_dominant_emotion(emotion_state)
+
+    # Create embed
+    embed = discord.Embed(
+        title=f"Demi's Response",
+        description=content[:2000],  # Discord 2000 char limit per embed description
+        color=color
+    )
+
+    # Add emotion indicator as footer
+    emotion_display = dominant_emotion.replace("_", " ").title()
+    embed.set_footer(text=f"Mood: {emotion_display} | Demi v1")
+
+    # Add timestamp
+    embed.timestamp = discord.utils.utcnow()
+
+    # Optional: Add emotion breakdown as field (if verbose mode)
+    # This is hidden by default but could be shown in responses
+    if len(emotion_state) > 0 and any(v > 0.5 for v in emotion_state.values()):
+        # Create compact emotion summary (only show emotions > 0.3)
+        strong_emotions = [
+            f"{e.replace('_', ' ').title()}: {v:.1f}"
+            for e, v in emotion_state.items()
+            if v > 0.3
+        ]
+        if strong_emotions and len(strong_emotions) <= 3:
+            emotion_summary = " | ".join(strong_emotions)
+            embed.add_field(
+                name="Emotional Context",
+                value=emotion_summary,
+                inline=False
+            )
+
+    return embed
 
 
 class DiscordBot(BasePlatform):
