@@ -19,7 +19,7 @@ class PluginManager:
     def __init__(self):
         """Initialize plugin manager."""
         self.registry: Dict[str, PluginMetadata] = {}
-        self._config = DemiConfig()
+        self._config = DemiConfig.load()
         self._discovered_plugins: Dict[str, type] = {}
 
     async def discover_and_register(self) -> None:
@@ -75,7 +75,10 @@ class PluginManager:
 
             # Get plugin config from system config or use provided
             if config is None:
-                config = self._config.get(f"plugins.{name}", {})
+                config = self._config.platforms.get(name, {})
+
+            if config is None:
+                config = {}
 
             metadata.config = config
 
