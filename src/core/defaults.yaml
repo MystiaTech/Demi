@@ -1,0 +1,18 @@
+system:
+  debug: false
+  log_level: INFO
+  ram_threshold: 80
+
+emotional_system:
+  decay_rates:
+    loneliness: 0.1
+    excitement: 0.2
+  persistence_interval: 300  # 5 minutes
+
+platforms:
+  discord:
+    enabled: true
+    auto_reconnect: true
+  android:
+    enabled: false
+    notification_frequency: 3  # per hour
