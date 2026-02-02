@@ -19,6 +19,11 @@ from src.conductor.health import (
     ResourceMetrics,
     get_health_monitor,
 )
+from src.conductor.orchestrator import (
+    Conductor,
+    SystemStatus,
+    get_conductor,
+)
 
 
 # Convenience function for getting the global metrics registry
@@ -43,4 +48,8 @@ __all__ = [
     "HealthCheckResult",
     "ResourceMetrics",
     "get_health_monitor",
+    # Orchestrator
+    "Conductor",
+    "SystemStatus",
+    "get_conductor",
 ]
