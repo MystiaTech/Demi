@@ -249,32 +249,58 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 
 ## Phase 6: Android Integration
 
-**Goal:** Build FastAPI backend and mobile client for Android bidirectional messaging.
+**Goal:** Build FastAPI backend and Android mobile client for bidirectional messaging with Demi via WebSocket. Users can send/receive messages on mobile and Demi can initiate autonomous check-ins with guilt-trip messages when ignored.
 
 **Status:** Planning ⏳
-**Plans Created:** 3 (Authentication, Messaging, Notifications)
+**Plans Created:** 3 (Authentication & Sessions, WebSocket Messaging, Autonomy & Unified State)
 
-**Duration:** ~4 hours (estimated)
+**Duration:** ~6 hours (estimated)
 
-**Why This Phase:** Android enables Demi to initiate contact (check-ins, "you ignored me" messages) and receive messages on mobile. Can run parallel with Phase 5.
+**Why This Phase:** Android enables Demi to feel truly autonomous. She can reach out when lonely, celebrate when excited, and guilt-trip when ignored. WebSocket ensures real-time presence. Multi-device support lets users stay connected across phone + tablet.
 
 **Requirements Mapped:** ANDR-01, ANDR-02, ANDR-03, ANDR-04 (4)
 
-**Dependencies:** Phase 1, 2, 3, 4 (all foundation complete)
+**Dependencies:** Phase 1, 2, 3, 4 (all foundation complete), Phase 5 (for unified emotional state)
 
 **Technical Deliverables:**
-- FastAPI REST API backend
-- User authentication (JWT tokens)
-- Message send/receive endpoints
-- Notification polling system
-- Message persistence
+- FastAPI backend with JWT authentication (access + refresh tokens)
+- Multi-device session management (simultaneous login on phone + tablet)
+- WebSocket real-time messaging (/api/v1/chat/ws)
+- Message persistence with 7-day history
+- Read receipts (sent/delivered/read status with timestamps)
+- Typing indicators ("Demi is thinking...")
+- Autonomous check-in system (loneliness, excitement, frustration triggers)
+- Guilt-trip messages after 24h+ ignored (escalation logic)
+- Unified emotional state across Discord and Android
 
 **Plans:**
-- [ ] 06-01-PLAN.md — Authentication & User Management (JWT)
-- [ ] 06-02-PLAN.md — Messaging Endpoints (Send/Receive)
-- [ ] 06-03-PLAN.md — Notifications & Load Testing
+- [ ] 06-01-PLAN.md — Authentication & User Management (Wave 1)
+  - Login endpoint (existing account only, no in-app registration)
+  - Refresh token flow (7-day expiry, stored in Android keystore)
+  - Multi-device session management (view/revoke sessions)
+  - Brute-force protection (5 failed attempts → 15-min lockout)
+  - Users and sessions tables
 
-**Note:** Can be parallelized with Phase 5
+- [ ] 06-02-PLAN.md — WebSocket Messaging & Emotion Tracking (Wave 2)
+  - WebSocket endpoint for bidirectional real-time messaging
+  - Message persistence with emotion_state
+  - Last 7 days of history loaded on connection
+  - Read receipts (delivered_at, read_at timestamps)
+  - Typing indicators during LLM generation
+  - Routes through Conductor LLM pipeline
+
+- [ ] 06-03-PLAN.md — Autonomy & Unified State (Wave 3)
+  - Autonomous check-in system (background task every 15 minutes)
+  - Emotional triggers (loneliness > 0.7, excitement > 0.8, frustration > 0.6)
+  - Guilt-trip messages when user ignores check-ins for 24h+
+  - Escalation tone (24h → "slightly bothered", 48h → "very hurt")
+  - Spam prevention (max 1 check-in per hour)
+  - Unified EmotionalState across Discord and Android
+
+**Wave Structure:**
+- Wave 1: 06-01 (authentication, no dependencies)
+- Wave 2: 06-02 (messaging, depends on 06-01)
+- Wave 3: 06-03 (autonomy, depends on 06-02)
 
 ---
 
@@ -359,5 +385,6 @@ Phase 2: [███████████████████████�
 Phase 3: [████████████████████████████████] 100% (4/4 plans)
 Phase 4: [████████████████████████████████] 100% (4/4 plans)
 Phase 5: [████████████████████████████████] 100% (3/3 plans)
-Phase 6-10: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0% (15 plans remaining)
+Phase 6: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0% (0/3 plans - ready for execution)
+Phase 7-10: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0% (15 plans remaining)
 ```
