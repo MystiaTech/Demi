@@ -27,6 +27,7 @@ from src.conductor.scaler import PredictiveScaler
 from src.conductor.router import RequestRouter
 from src.conductor.metrics import get_metrics
 from src.conductor.circuit_breaker import get_circuit_breaker_manager
+from src.llm import OllamaInference, LLMConfig, InferenceError
 
 logger = get_logger()
 
@@ -78,6 +79,12 @@ class Conductor:
         # Database
         self._db_manager = DatabaseManager(self._config)
 
+        # LLM inference engine
+        self.llm = OllamaInference(
+            LLMConfig.from_global_config(self._config), self._logger
+        )
+        self.llm_available = False
+
         # State tracking
         self._running = False
         self._startup_time: Optional[float] = None
@@ -85,6 +92,7 @@ class Conductor:
         self._background_tasks: List[asyncio.Task] = []
         self._request_count = 0
         self._failed_request_count = 0
+        self._inference_latency_sec: float = 0.0
 
         # Signal handlers
         self._signal_handlers_registered = False
@@ -151,6 +159,22 @@ class Conductor:
             except Exception as e:
                 self._logger.error(f"health_monitor_startup_failed: {str(e)}")
                 return False
+
+            # Step 4.5: Initialize LLM and check Ollama health
+            self._logger.info("Checking LLM (Ollama) availability...")
+            try:
+                llm_health = await self.llm.health_check()
+                if llm_health:
+                    self.llm_available = True
+                    self._logger.info("LLM: Ollama online at http://localhost:11434")
+                else:
+                    self.llm_available = False
+                    self._logger.warning(
+                        "LLM: Ollama not responding, inference disabled"
+                    )
+            except Exception as e:
+                self.llm_available = False
+                self._logger.warning(f"LLM health check failed: {str(e)}")
 
             # Step 5: Initialize predictive scaler
             self._logger.info("Initializing scaler...")
@@ -305,6 +329,41 @@ class Conductor:
         except Exception as e:
             self._logger.error("conductor_startup_failed", error=str(e), exc_info=True)
             return False
+
+    async def request_inference(self, messages: List[Dict[str, str]]) -> str:
+        """
+        Request inference from LLM.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+
+        Returns:
+            Response text from LLM, or fallback message if unavailable
+        """
+        if not self.llm_available:
+            self._logger.warning("LLM inference requested but Ollama unavailable")
+            return "I'm not ready to talk right now... wait a sec?"
+
+        try:
+            # Record start time for latency tracking
+            start_time = time.time()
+
+            # Call inference
+            response = await self.llm.chat(messages)
+
+            # Record latency
+            latency = time.time() - start_time
+            self._inference_latency_sec = latency
+            self._logger.debug(f"Inference latency: {latency:.2f}s")
+
+            return response
+
+        except InferenceError as e:
+            self._logger.error(f"Inference error: {str(e)}")
+            return "I'm not ready to talk right now... wait a sec?"
+        except Exception as e:
+            self._logger.exception(f"Unexpected error during inference: {str(e)}")
+            return "I'm not ready to talk right now... wait a sec?"
 
     async def shutdown(self) -> None:
         """
