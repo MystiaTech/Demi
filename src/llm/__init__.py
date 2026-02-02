@@ -10,6 +10,7 @@ from src.llm.inference import OllamaInference, InferenceError, ContextOverflowEr
 from src.llm.prompt_builder import PromptBuilder, BASE_DEMI_PROMPT
 from src.llm.history_manager import ConversationHistory, Message
 from src.llm.response_processor import ResponseProcessor, ProcessedResponse
+from src.llm.codebase_reader import CodebaseReader, CodeSnippet
 
 __all__ = [
     "LLMConfig",
@@ -22,4 +23,6 @@ __all__ = [
     "Message",
     "ResponseProcessor",
     "ProcessedResponse",
+    "CodebaseReader",
+    "CodeSnippet",
 ]
