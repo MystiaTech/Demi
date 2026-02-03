@@ -15,13 +15,17 @@ class EmotionPersistence:
     Integrates with DecaySystem to simulate offline emotion progression.
     """
 
-    def __init__(self, db_path: str = "~/.demi/emotions.db"):
+    def __init__(self, db_path: str = "~/.demi/emotions.db", db_manager=None, logger=None):
         """
         Initialize persistence layer.
 
         Args:
             db_path: Path to SQLite database file
+            db_manager: Optional database manager instance
+            logger: Optional logger instance
         """
+        self.db_manager = db_manager
+        self.logger = logger
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 

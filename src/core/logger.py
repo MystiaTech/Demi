@@ -136,10 +136,10 @@ class DemiLogger:
         if self._logger:
             self._logger.warning(message, extra=kwargs)
 
-    def error(self, message: str, **kwargs):
+    def error(self, message: str, exc_info=False, **kwargs):
         """Log error message."""
         if self._logger:
-            self._logger.error(message, extra=kwargs)
+            self._logger.error(message, exc_info=exc_info, extra=kwargs)
 
     def critical(self, message: str, **kwargs):
         """Log critical message."""
