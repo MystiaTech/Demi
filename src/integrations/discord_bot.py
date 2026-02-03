@@ -5,6 +5,7 @@ Includes voice channel integration for voice commands and responses.
 """
 
 import os
+import sys
 import asyncio
 import uuid
 from typing import Optional, Dict
@@ -344,21 +345,38 @@ class DiscordBot(BasePlatform):
             self.bot = commands.Bot(command_prefix="!", intents=intents)
 
             # Register event handlers
+            print(f"📌 Registering Discord event handlers...")
+            self.logger.info("Registering Discord event handlers")
+
             @self.bot.event
             async def on_ready():
                 """Bot connected and ready."""
-                self.logger.info(
-                    f"Discord bot connected as {self.bot.user}",
-                    bot_id=self.bot.user.id,
-                    guild_count=len(self.bot.guilds),
-                )
-                print(f"\n{'='*60}")
-                print(f"✅ DISCORD BOT ONLINE!")
-                print(f"   Bot: {self.bot.user}")
-                print(f"   User ID: {self.bot.user.id}")
-                print(f"   Servers: {len(self.bot.guilds)}")
-                print(f"{'='*60}\n")
-                self._status = "online"
+                try:
+                    self.logger.info(
+                        f"Discord bot connected as {self.bot.user}",
+                        bot_id=self.bot.user.id,
+                        guild_count=len(self.bot.guilds),
+                    )
+                    print(f"\n{'='*60}")
+                    print(f"✅ DISCORD BOT ONLINE!")
+                    print(f"   Bot: {self.bot.user}")
+                    print(f"   User ID: {self.bot.user.id}")
+                    print(f"   Servers: {len(self.bot.guilds)}")
+                    print(f"   Status: Ready to respond!")
+                    print(f"{'='*60}\n")
+                    self._status = "online"
+                except Exception as e:
+                    self.logger.error(f"Error in on_ready handler: {e}")
+                    print(f"❌ Error in on_ready: {e}")
+
+            @self.bot.event
+            async def on_error(event, *args, **kwargs):
+                """Handle bot errors."""
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.logger.error(f"Discord bot error in {event}: {exc_value}")
+                print(f"❌ Discord bot error in {event}: {exc_value}")
+
+            self.logger.info("Event handlers registered")
 
             @self.bot.event
             async def on_message(message):
@@ -514,6 +532,20 @@ class DiscordBot(BasePlatform):
             # Start bot in background (non-blocking)
             self.logger.info("Creating asyncio task for bot.start()")
             self._bot_task = asyncio.create_task(self.bot.start(self.token))
+
+            # Add callback to catch errors
+            def task_error_callback(task):
+                try:
+                    exc = task.exception()
+                    if exc:
+                        self.logger.error(f"Discord bot task exception: {exc}")
+                        print(f"❌ Discord Bot Error: {exc}")
+                except asyncio.CancelledError:
+                    self.logger.info("Discord bot task was cancelled")
+                except Exception as e:
+                    self.logger.error(f"Error in task callback: {e}")
+
+            self._bot_task.add_done_callback(task_error_callback)
             self.logger.info("Bot start task created successfully")
 
             # Get autonomy coordinator from conductor
