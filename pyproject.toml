@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demi"
+version = "1.0.0"
+description = "A sophisticated AI assistant with emotional state, personality, and multi-platform integration"
+authors = [
+    {name = "Demi Development Team"}
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "discord.py>=2.3.0",
+    "ollama>=0.0.11",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "sqlalchemy>=2.0.0",
+    "pyttsx3>=2.90",
+    "faster-whisper>=0.10.0",
+    "piper-tts>=1.2.0",
+    "websockets>=11.0.0",
+]
+
+[project.optional-dependencies]
+voice = [
+    "piper-tts>=1.2.0",
+    "faster-whisper>=0.10.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.entry-points."demi.platforms"]
+discord = "src.integrations.discord_bot:DiscordBot"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
