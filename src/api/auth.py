@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 import jwt
 import os
 import uuid
@@ -66,14 +66,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(user_id: str, email: str, session_id: str) -> str:
     """Create short-lived access token (30 minutes)"""
-    exp = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    exp = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "user_id": user_id,
         "email": email,
         "session_id": session_id,
         "type": "access",
         "exp": int(exp.timestamp()),
-        "iat": int(datetime.now(UTC).timestamp()),
+        "iat": int(datetime.now(timezone.utc).timestamp()),
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token
@@ -81,13 +81,13 @@ def create_access_token(user_id: str, email: str, session_id: str) -> str:
 
 def create_refresh_token(user_id: str, session_id: str) -> str:
     """Create long-lived refresh token (7 days)"""
-    exp = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "user_id": user_id,
         "session_id": session_id,
         "type": "refresh",
         "exp": int(exp.timestamp()),
-        "iat": int(datetime.now(UTC).timestamp()),
+        "iat": int(datetime.now(timezone.utc).timestamp()),
     }
     token = jwt.encode(payload, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
     return token
@@ -154,7 +154,7 @@ async def create_session(
     """Create new session for device"""
     session_id = str(uuid.uuid4())
     refresh_token_hash = hash_password(refresh_token)
-    expires_at = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
     session = Session(
         session_id=session_id,
@@ -162,8 +162,8 @@ async def create_session(
         device_name=device_name,
         device_fingerprint=device_fingerprint or "",
         refresh_token_hash=refresh_token_hash,
-        created_at=datetime.now(UTC),
-        last_activity=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
+        last_activity=datetime.now(timezone.utc),
         expires_at=expires_at,
         is_active=True,
     )
@@ -209,7 +209,7 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Check if account is locked
-    if user.locked_until and user.locked_until > datetime.now(UTC):
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=403,
             detail=f"Account locked due to too many failed attempts. Try again after {user.locked_until.isoformat()}",
@@ -225,7 +225,7 @@ async def login(req: LoginRequest):
             # Lock account after 5 failed attempts
             locked_until = None
             if new_failed_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
-                locked_until = datetime.now(UTC) + timedelta(
+                locked_until = datetime.now(timezone.utc) + timedelta(
                     minutes=LOCKOUT_DURATION_MINUTES
                 )
                 logger.warning(f"Account locked: {user.email} (5 failed attempts)")
@@ -261,7 +261,7 @@ async def login(req: LoginRequest):
         SET last_login = ?, failed_login_attempts = 0, locked_until = NULL
         WHERE user_id = ?
         """,
-            (datetime.now(UTC).isoformat(), user.user_id),
+            (datetime.now(timezone.utc).isoformat(), user.user_id),
         )
         conn.commit()
 
@@ -318,14 +318,14 @@ async def refresh_access_token(req: RefreshTokenRequest):
 
     # Check expiry
     expires_at = datetime.fromisoformat(row["expires_at"])
-    if expires_at < datetime.now(UTC):
+    if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Session expired")
 
     # Update last activity
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
-            (datetime.now(UTC).isoformat(), session_id),
+            (datetime.now(timezone.utc).isoformat(), session_id),
         )
         conn.commit()
 
@@ -342,7 +342,7 @@ async def refresh_access_token(req: RefreshTokenRequest):
         refresh_token=req.refresh_token,  # Return same refresh token
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        refresh_expires_in=int((expires_at - datetime.now(UTC)).total_seconds()),
+        refresh_expires_in=int((expires_at - datetime.now(timezone.utc)).total_seconds()),
         user_id=user_id,
         email=user.email,
         session_id=session_id,
@@ -367,7 +367,7 @@ async def list_sessions(current_user: dict = Depends(get_current_user)):
         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
         ORDER BY last_activity DESC
         """,
-            (user_id, datetime.now(UTC).isoformat()),
+            (user_id, datetime.now(timezone.utc).isoformat()),
         ).fetchall()
 
     sessions = []

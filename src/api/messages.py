@@ -2,7 +2,7 @@ import sqlite3
 import json
 import uuid
 import os
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 from src.api.models import AndroidMessage
 from src.core.logger import DemiLogger
@@ -31,7 +31,7 @@ async def store_message(
         content=content,
         emotion_state=emotion_state,
         status="sent",
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
     )
 
     db_path = get_db_path()
@@ -63,7 +63,7 @@ async def get_conversation_history(
     conversation_id: str, days: int = 7, limit: int = 100
 ) -> List[AndroidMessage]:
     """Load last N days of conversation history"""
-    cutoff = datetime.now(UTC) - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     db_path = get_db_path()
 
     with sqlite3.connect(db_path) as conn:
@@ -115,7 +115,7 @@ async def mark_as_read(message_id: str) -> None:
         SET status = 'read', read_at = ?
         WHERE message_id = ?
         """,
-            (datetime.now(UTC).isoformat(), message_id),
+            (datetime.now(timezone.utc).isoformat(), message_id),
         )
         conn.commit()
     logger.debug(f"Message marked read: {message_id}")
@@ -131,6 +131,6 @@ async def mark_as_delivered(message_id: str) -> None:
         SET status = 'delivered', delivered_at = ?
         WHERE message_id = ? AND status = 'sent'
         """,
-            (datetime.now(UTC).isoformat(), message_id),
+            (datetime.now(timezone.utc).isoformat(), message_id),
         )
         conn.commit()

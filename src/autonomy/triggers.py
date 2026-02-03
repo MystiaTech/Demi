@@ -6,7 +6,7 @@ cooldowns to prevent trigger spam.
 """
 
 from typing import Dict, List, Any, Optional
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from enum import Enum
 
@@ -242,7 +242,7 @@ class TriggerManager:
         last_fired_time = self.last_fired.get(trigger.trigger_type)
         if last_fired_time:
             cooldown_end = last_fired_time + timedelta(minutes=trigger.cooldown_minutes)
-            if datetime.now(UTC) < cooldown_end:
+            if datetime.now(timezone.utc) < cooldown_end:
                 return False
 
         # Check platform availability
@@ -329,13 +329,13 @@ class TriggerManager:
         """
         history_entry = TriggerHistory(
             trigger_type=trigger.trigger_type,
-            fired_at=datetime.now(UTC),
+            fired_at=datetime.now(timezone.utc),
             action_executed=action_executed,
             success=True,  # Assume success for now
         )
 
         self.trigger_history.append(history_entry)
-        self.last_fired[trigger.trigger_type] = datetime.now(UTC)
+        self.last_fired[trigger.trigger_type] = datetime.now(timezone.utc)
 
         # Trim history if too large
         if len(self.trigger_history) > self.max_history_size:
@@ -395,7 +395,7 @@ class TriggerManager:
         recent_history = [
             h
             for h in self.trigger_history
-            if h.fired_at > datetime.now(UTC) - timedelta(hours=24)
+            if h.fired_at > datetime.now(timezone.utc) - timedelta(hours=24)
         ]
 
         trigger_counts = {}

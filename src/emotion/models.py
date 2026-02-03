@@ -1,7 +1,7 @@
 # src/emotion/models.py
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Optional
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -42,7 +42,7 @@ class EmotionalState:
     )
 
     # Metadata
-    last_updated: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Emotion-specific floors (minimum values)
     _EMOTION_FLOORS = {
@@ -60,7 +60,7 @@ class EmotionalState:
     def __post_init__(self):
         """Validate state after initialization."""
         self._validate_bounds()
-        self.last_updated = datetime.now(UTC)
+        self.last_updated = datetime.now(timezone.utc)
 
     def _validate_bounds(self):
         """Ensure all emotions are within [floor, 1.0]."""
@@ -120,7 +120,7 @@ class EmotionalState:
             setattr(self, emotion_name, clamped)
             self.momentum[emotion_name] = 0.0
 
-        self.last_updated = datetime.now(UTC)
+        self.last_updated = datetime.now(timezone.utc)
 
     def delta_emotion(
         self, emotion_name: str, delta: float, momentum_override: bool = False

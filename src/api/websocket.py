@@ -2,7 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Qu
 from typing import Dict, Set
 import asyncio
 import json
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from src.api.auth import verify_token
 from src.api.messages import (
@@ -44,7 +44,7 @@ class ConnectionManager:
                     {
                         "event": event,
                         "data": data,
-                        "timestamp": datetime.now(UTC).isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
             except Exception as e:
@@ -178,7 +178,7 @@ async def websocket_endpoint(
                         {
                             "event": "message",
                             "data": demi_message.to_dict(),
-                            "timestamp": datetime.now(UTC).isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     )
 

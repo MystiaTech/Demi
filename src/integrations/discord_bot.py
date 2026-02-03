@@ -8,7 +8,7 @@ import os
 import asyncio
 import uuid
 from typing import Optional, Dict
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands, tasks
@@ -147,7 +147,7 @@ def should_generate_ramble(
 
     # Check if enough time since last ramble
     if last_ramble_time:
-        if datetime.now(UTC) - last_ramble_time < timedelta(
+        if datetime.now(timezone.utc) - last_ramble_time < timedelta(
             minutes=min_interval_minutes
         ):
             return False, None
@@ -249,10 +249,10 @@ class RambleTask:
                     content=content,
                     emotion_state=emotion_state,
                     trigger=trigger,
-                    created_at=datetime.now(UTC),
+                    created_at=datetime.now(timezone.utc),
                 )
                 await self.ramble_store.save(ramble)
-                self.last_ramble_time = datetime.now(UTC)
+                self.last_ramble_time = datetime.now(timezone.utc)
             else:
                 self.logger.error(f"Ramble channel {self.ramble_channel_id} not found")
 

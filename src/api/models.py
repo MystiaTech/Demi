@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from pydantic import BaseModel, EmailStr
 import uuid
@@ -14,7 +14,7 @@ class User:
     email: str
     username: str
     password_hash: str  # bcrypt hash
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_login: Optional[datetime] = None
     is_active: bool = True
     failed_login_attempts: int = 0
@@ -42,9 +42,9 @@ class Session:
     device_name: str  # "Pixel 7", "Galaxy Tab", etc.
     device_fingerprint: str  # Unique device ID
     refresh_token_hash: str  # bcrypt hash of refresh token
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_activity: datetime = field(default_factory=lambda: datetime.now(UTC))
-    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
 
     def to_dict(self) -> dict:
@@ -171,7 +171,7 @@ class AndroidMessage:
     status: str = "sent"  # sent, delivered, read
     delivered_at: Optional[datetime] = None
     read_at: Optional[datetime] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         return {

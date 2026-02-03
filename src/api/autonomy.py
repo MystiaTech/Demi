@@ -30,7 +30,7 @@ import asyncio
 import sqlite3
 import os
 import uuid
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
 
@@ -121,7 +121,7 @@ async def should_send_checkin(
     # Check spam prevention: max 1 per hour
     last_checkin = await get_last_checkin_time(user_id)
     if last_checkin:
-        time_since_last = datetime.now(UTC) - last_checkin
+        time_since_last = datetime.now(timezone.utc) - last_checkin
         if time_since_last < timedelta(hours=1):
             logger.debug(
                 f"Check-in suppressed for {user_id}: too soon ({time_since_last.total_seconds() // 60}m ago)"
@@ -162,7 +162,7 @@ async def check_if_ignored(user_id: str) -> Tuple[bool, Optional[timedelta]]:
     if not last_checkin:
         return False, None
 
-    time_since_checkin = datetime.now(UTC) - last_checkin
+    time_since_checkin = datetime.now(timezone.utc) - last_checkin
 
     # If user responded after check-in, not ignored
     if last_response and last_response > last_checkin:
@@ -320,7 +320,7 @@ async def send_autonomous_checkin(
                 trigger,
                 str(emotion_state.to_dict()),
                 False,
-                datetime.now(UTC).isoformat(),
+                datetime.now(timezone.utc).isoformat(),
             ),
         )
         conn.commit()
@@ -519,7 +519,7 @@ class AutonomyManager:
                 "sender": "demi",
                 "content": content,
                 "emotion_state": {},
-                "created_at": datetime.now(UTC).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "is_autonomous": True,
             }
 

@@ -8,7 +8,7 @@ and conversation persistence after Ollama inference.
 import time
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from src.core.logger import DemiLogger
 from src.emotion.models import EmotionalState
@@ -125,7 +125,7 @@ class ResponseProcessor:
 
         # Step 3: Log interaction
         interaction_log = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "interaction_type": interaction_type,
             "response_text": cleaned_text,
             "inference_time_sec": inference_time_sec,
@@ -194,7 +194,7 @@ class ResponseProcessor:
 
         # Create interaction log for refusal
         interaction_log = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "interaction_type": "refusal",
             "response_text": refusal_text,
             "inference_time_sec": inference_time_sec,

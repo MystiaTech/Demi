@@ -1,6 +1,6 @@
 # src/emotion/decay.py
 import asyncio
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, Callable
 import math
 from src.emotion.models import EmotionalState
@@ -23,7 +23,7 @@ class DecaySystem:
         self.tick_interval = tick_interval_seconds
         self.is_running = False
         self._task = None
-        self.last_tick = datetime.now(UTC)
+        self.last_tick = datetime.now(timezone.utc)
 
         # Decay rates per emotion (percentage per 5-minute tick)
         # These are tuned based on research (CONTEXT.md)
@@ -94,7 +94,7 @@ class DecaySystem:
         Returns:
             Updated emotional state
         """
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         time_delta = (now - self.last_tick).total_seconds()
         self.last_tick = now
 
