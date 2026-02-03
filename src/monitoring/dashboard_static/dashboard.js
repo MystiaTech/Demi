@@ -36,32 +36,46 @@ class DemiDashboard {
     }
 
     setupTheme() {
-        // Check for saved theme or use system preference
+        // Check for saved theme or default to dark
         const savedTheme = localStorage.getItem('demi-dashboard-theme');
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+        const theme = savedTheme || 'dark';
 
+        // Apply theme
         this.setTheme(theme);
 
-        // Setup theme toggle button
-        const toggleBtn = document.getElementById('theme-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => this.toggleTheme());
-        }
+        // Setup theme toggle button with retry logic
+        const setupToggleButton = () => {
+            const toggleBtn = document.getElementById('theme-toggle');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.toggleTheme();
+                });
+                console.log('Theme toggle button attached');
+            } else {
+                console.warn('Theme toggle button not found, retrying...');
+                setTimeout(setupToggleButton, 100);
+            }
+        };
+
+        setupToggleButton();
     }
 
     setTheme(theme) {
         const html = document.documentElement;
-        const icon = document.getElementById('theme-icon');
 
         if (theme === 'dark') {
             html.setAttribute('data-theme', 'dark');
-            if (icon) icon.textContent = '☀️';
             localStorage.setItem('demi-dashboard-theme', 'dark');
         } else {
             html.removeAttribute('data-theme');
-            if (icon) icon.textContent = '🌙';
             localStorage.setItem('demi-dashboard-theme', 'light');
+        }
+
+        // Update icon
+        const icon = document.getElementById('theme-icon');
+        if (icon) {
+            icon.textContent = theme === 'dark' ? '☀️' : '🌙';
         }
     }
 
