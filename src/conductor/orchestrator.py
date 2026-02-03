@@ -258,6 +258,15 @@ class Conductor:
                         if plugin:
                             loaded_count += 1
                             self._logger.info(f"Plugin loaded: {metadata.name}")
+
+                            # Special setup for Discord plugin
+                            if metadata.name == "discord" and hasattr(plugin, "setup"):
+                                self._logger.info("Setting up Discord plugin with conductor...")
+                                try:
+                                    plugin.setup(self)
+                                    self._logger.info("Discord plugin setup complete")
+                                except Exception as e:
+                                    self._logger.warning(f"Discord plugin setup failed: {str(e)}")
                     except Exception as e:
                         self._logger.warning(
                             f"plugin_load_failed {metadata.name}: {str(e)}"

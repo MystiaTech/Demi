@@ -313,17 +313,14 @@ class DiscordBot(BasePlatform):
         self.autonomy_coordinator: Optional[AutonomyCoordinator] = None
         self.voice_client: Optional[DiscordVoiceClient] = None
 
-    async def initialize(self, conductor) -> bool:
+    def initialize(self, config: dict) -> bool:
         """Initialize Discord bot with intents and event handlers.
 
         Args:
-            conductor: Conductor instance for LLM routing
+            config: Configuration dictionary for Discord
 
         Returns:
             True if initialization successful
-
-        Raises:
-            ValueError: If DISCORD_BOT_TOKEN not set or empty
         """
         try:
             # Load token from environment
@@ -336,9 +333,6 @@ class DiscordBot(BasePlatform):
 
             if len(self.token.strip()) == 0:
                 raise ValueError("DISCORD_BOT_TOKEN is empty")
-
-            # Store conductor reference
-            self.conductor = conductor
 
             # Configure intents
             intents = discord.Intents.default()
@@ -406,6 +400,11 @@ class DiscordBot(BasePlatform):
                 if not content or len(content) == 0:
                     return
 
+                # Check if conductor is available
+                if not self.conductor:
+                    await message.reply("I'm not ready yet. Try again in a moment.", mention_author=False)
+                    return
+
                 try:
                     # Show typing indicator (improves UX)
                     async with message.channel.typing():
@@ -469,6 +468,38 @@ class DiscordBot(BasePlatform):
                 intents=["message_content", "guilds", "direct_messages"],
             )
 
+            # Register voice commands
+            self._register_voice_commands()
+
+            self._initialized = True
+            self._status = "initialized"
+
+            return True
+
+        except ValueError as e:
+            self.logger.error(f"Discord bot configuration error: {e}")
+            self._status = "error"
+            return False
+        except Exception as e:
+            self.logger.error(f"Discord bot initialization failed: {e}")
+            self._status = "error"
+            return False
+
+    def setup(self, conductor) -> bool:
+        """Setup Discord bot with conductor reference and start it.
+
+        This is called after initialization to provide the conductor reference
+        and actually start the bot.
+
+        Args:
+            conductor: Conductor instance for LLM routing
+
+        Returns:
+            True if setup successful
+        """
+        try:
+            self.conductor = conductor
+
             # Start bot in background (non-blocking)
             self._bot_task = asyncio.create_task(self.bot.start(self.token))
 
@@ -490,19 +521,12 @@ class DiscordBot(BasePlatform):
             elif voice_enabled and not HAS_VOICE:
                 self.logger.warning("Voice features enabled but voice module not available")
 
-            # Register voice commands
-            self._register_voice_commands()
-
-            self._initialized = True
-            self._status = "initializing"
-
+            self._status = "online"
+            self.logger.info("Discord bot setup complete and starting")
             return True
 
-        except ValueError as e:
-            self.logger.error(f"Discord bot configuration error: {e}")
-            raise
         except Exception as e:
-            self.logger.error(f"Discord bot initialization failed: {e}")
+            self.logger.error(f"Discord bot setup failed: {e}")
             self._status = "error"
             return False
 
