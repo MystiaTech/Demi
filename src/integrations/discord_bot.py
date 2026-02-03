@@ -338,7 +338,7 @@ class DiscordBot(BasePlatform):
             intents = discord.Intents.default()
             intents.message_content = True  # Required to read message.content
             intents.guilds = True  # Required for server messages
-            intents.direct_messages = True  # Required for DM handling
+            intents.dm_messages = True  # Required for DM handling
 
             # Create bot instance
             self.bot = commands.Bot(command_prefix="!", intents=intents)
