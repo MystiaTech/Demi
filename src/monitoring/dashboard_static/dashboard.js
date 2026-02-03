@@ -1,0 +1,690 @@
+/**
+ * Demi Health Dashboard - Real-time updates and visualization
+ */
+
+class DemiDashboard {
+    constructor() {
+        this.ws = null;
+        this.reconnectInterval = 5000;
+        this.updateInterval = null;
+        this.memoryHistory = [];
+        this.responseTimeHistory = [];
+        this.maxHistoryPoints = 120; // 10 minutes at 5s intervals
+        this.emotionColors = {
+            loneliness: '#ff6b6b',
+            excitement: '#4ecdc4',
+            frustration: '#ffe66d',
+            jealousy: '#95e1d3',
+            vulnerability: '#f38181',
+            confidence: '#a8e6cf',
+            curiosity: '#c7ceea',
+            affection: '#ffd3b6',
+            defensiveness: '#ffaaa5'
+        };
+        this.emotions = ['loneliness', 'excitement', 'frustration', 'jealousy', 'vulnerability',
+                        'confidence', 'curiosity', 'affection', 'defensiveness'];
+
+        this.init();
+    }
+
+    init() {
+        this.setupTheme();
+        this.connectWebSocket();
+        this.setupEventListeners();
+        this.fetchInitialData();
+        this.initEmotionLegend();
+    }
+
+    setupTheme() {
+        // Check for saved theme or use system preference
+        const savedTheme = localStorage.getItem('demi-dashboard-theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+
+        this.setTheme(theme);
+
+        // Setup theme toggle button
+        const toggleBtn = document.getElementById('theme-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleTheme());
+        }
+    }
+
+    setTheme(theme) {
+        const html = document.documentElement;
+        const icon = document.getElementById('theme-icon');
+
+        if (theme === 'dark') {
+            html.setAttribute('data-theme', 'dark');
+            if (icon) icon.textContent = '☀️';
+            localStorage.setItem('demi-dashboard-theme', 'dark');
+        } else {
+            html.removeAttribute('data-theme');
+            if (icon) icon.textContent = '🌙';
+            localStorage.setItem('demi-dashboard-theme', 'light');
+        }
+    }
+
+    toggleTheme() {
+        const html = document.documentElement;
+        const isDark = html.getAttribute('data-theme') === 'dark';
+        this.setTheme(isDark ? 'light' : 'dark');
+    }
+
+    connectWebSocket() {
+        const wsUrl = `ws://${window.location.host}/ws`;
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.updateConnectionStatus('connected');
+        };
+
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+        };
+
+        this.ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            this.updateConnectionStatus('disconnected');
+
+            // Attempt to reconnect
+            setTimeout(() => this.connectWebSocket(), this.reconnectInterval);
+        };
+
+        this.ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            this.updateConnectionStatus('error');
+        };
+    }
+
+    updateConnectionStatus(status) {
+        const statusEl = document.getElementById('connection-status');
+        const wsStatusEl = document.getElementById('websocket-status');
+
+        const statusMap = {
+            'connected': { text: '● Live', class: 'connected' },
+            'disconnected': { text: '○ Disconnected', class: 'disconnected' },
+            'connecting': { text: '⋯ Connecting', class: 'connecting' },
+            'error': { text: '✕ Error', class: 'error' },
+        };
+
+        const statusInfo = statusMap[status] || statusMap['disconnected'];
+
+        if (statusEl) {
+            statusEl.textContent = statusInfo.text;
+            statusEl.className = `connection-status ${statusInfo.class}`;
+        }
+
+        if (wsStatusEl) {
+            wsStatusEl.textContent = statusInfo.text;
+        }
+    }
+
+    handleMessage(data) {
+        if (data.type === 'update') {
+            this.updateMetrics(data.metrics);
+            this.updateEmotions(data.emotions);
+            if (data.alerts) {
+                this.updateAlerts(data.alerts);
+            }
+            this.updateTimestamp(data.timestamp);
+        } else if (data.type === 'alert') {
+            this.addAlert(data.alert);
+        } else if (data.type === 'pong') {
+            // Keepalive response
+        }
+    }
+
+    async fetchInitialData() {
+        try {
+            // Fetch health status
+            const healthRes = await fetch('/api/health');
+            if (healthRes.ok) {
+                const health = await healthRes.json();
+                this.updateHealthStatus(health);
+            }
+
+            // Fetch emotions
+            const emotionsRes = await fetch('/api/emotions');
+            if (emotionsRes.ok) {
+                const emotions = await emotionsRes.json();
+                this.updateEmotions(emotions);
+            }
+
+            // Fetch alerts
+            const alertsRes = await fetch('/api/alerts?active_only=true');
+            if (alertsRes.ok) {
+                const alerts = await alertsRes.json();
+                this.updateAlerts(alerts.alerts);
+            }
+
+            // Fetch platforms
+            const platformsRes = await fetch('/api/platforms');
+            if (platformsRes.ok) {
+                const platforms = await platformsRes.json();
+                this.updatePlatforms(platforms.platforms);
+            }
+
+        } catch (error) {
+            console.error('Failed to fetch initial data:', error);
+        }
+    }
+
+    updateMetrics(metrics) {
+        if (!metrics || metrics.error) return;
+
+        // Update memory
+        const memoryPercent = metrics.memory_percent || 0;
+        const memoryBar = document.getElementById('memory-bar');
+        const memoryValue = document.getElementById('memory-value');
+        const memoryUsed = document.getElementById('memory-used');
+        const memoryAvailable = document.getElementById('memory-available');
+        const memoryTotal = document.getElementById('memory-total');
+
+        if (memoryBar) {
+            memoryBar.style.width = `${Math.min(memoryPercent, 100)}%`;
+            memoryBar.className = 'metric-fill';
+            if (memoryPercent > 90) memoryBar.classList.add('critical');
+            else if (memoryPercent > 80) memoryBar.classList.add('warning');
+        }
+
+        if (memoryValue) memoryValue.textContent = `${memoryPercent.toFixed(1)}%`;
+        if (memoryUsed) memoryUsed.textContent = (metrics.memory_used_gb || 0).toFixed(2);
+        if (memoryAvailable) memoryAvailable.textContent = (metrics.memory_available_gb || 0).toFixed(2);
+        if (memoryTotal) memoryTotal.textContent = (metrics.memory_total_gb || 0).toFixed(2);
+
+        // Update CPU
+        const cpuPercent = metrics.cpu_percent || 0;
+        const cpuBar = document.getElementById('cpu-bar');
+        const cpuValue = document.getElementById('cpu-value');
+
+        if (cpuBar) {
+            cpuBar.style.width = `${Math.min(cpuPercent, 100)}%`;
+            cpuBar.className = 'metric-fill';
+            if (cpuPercent > 90) cpuBar.classList.add('critical');
+            else if (cpuPercent > 80) cpuBar.classList.add('warning');
+        }
+
+        if (cpuValue) cpuValue.textContent = `${cpuPercent.toFixed(1)}%`;
+
+        // Update Disk
+        const diskPercent = metrics.disk_percent || 0;
+        const diskBar = document.getElementById('disk-bar');
+        const diskValue = document.getElementById('disk-value');
+
+        if (diskBar) {
+            diskBar.style.width = `${Math.min(diskPercent, 100)}%`;
+            diskBar.className = 'metric-fill';
+            if (diskPercent > 90) diskBar.classList.add('critical');
+            else if (diskPercent > 80) diskBar.classList.add('warning');
+        }
+
+        if (diskValue) diskValue.textContent = `${diskPercent.toFixed(1)}%`;
+
+        // Update history charts
+        this.updateMemoryHistory(metrics.memory_used_gb || 0);
+        this.updateResponseTimeHistory(metrics.response_time_p90 || 0);
+
+        // Update health status based on metrics
+        this.updateHealthFromMetrics(metrics);
+    }
+
+    updateHealthFromMetrics(metrics) {
+        const healthStatus = document.getElementById('health-status');
+        const healthGrid = document.getElementById('health-grid');
+
+        let status = 'healthy';
+        if (metrics.memory_percent > 90 || metrics.cpu_percent > 90) {
+            status = 'critical';
+        } else if (metrics.memory_percent > 80 || metrics.cpu_percent > 80) {
+            status = 'warning';
+        }
+
+        if (healthStatus) {
+            healthStatus.textContent = status.toUpperCase();
+            healthStatus.className = `value status-${status}`;
+        }
+
+        // Update health items styling
+        if (healthGrid) {
+            const items = healthGrid.querySelectorAll('.health-item');
+            items.forEach(item => {
+                item.className = 'health-item';
+                item.classList.add(status);
+            });
+        }
+    }
+
+    updateHealthStatus(health) {
+        const healthStatus = document.getElementById('health-status');
+        const healthGrid = document.getElementById('health-grid');
+
+        if (healthStatus && health.status) {
+            healthStatus.textContent = health.status.toUpperCase();
+            healthStatus.className = `value status-${health.status}`;
+        }
+
+        // Update health items styling
+        if (healthGrid) {
+            const items = healthGrid.querySelectorAll('.health-item');
+            items.forEach(item => {
+                item.className = 'health-item';
+                item.classList.add(health.status);
+            });
+        }
+
+        // Update alert count
+        if (health.alerts_count > 0) {
+            document.getElementById('alert-count').textContent = `(${health.alerts_count})`;
+        }
+    }
+
+    updateMemoryHistory(memoryGb) {
+        this.memoryHistory.push({
+            time: new Date(),
+            value: memoryGb
+        });
+
+        if (this.memoryHistory.length > this.maxHistoryPoints) {
+            this.memoryHistory.shift();
+        }
+
+        this.drawMemoryChart();
+    }
+
+    updateResponseTimeHistory(responseTime) {
+        this.responseTimeHistory.push({
+            time: new Date(),
+            value: responseTime
+        });
+
+        if (this.responseTimeHistory.length > this.maxHistoryPoints) {
+            this.responseTimeHistory.shift();
+        }
+
+        this.drawResponseChart();
+    }
+
+    drawMemoryChart() {
+        const canvas = document.getElementById('memory-chart');
+        if (!canvas || this.memoryHistory.length < 2) return;
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 40;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Find min/max for scaling
+        const values = this.memoryHistory.map(h => h.value);
+        const min = Math.max(0, Math.min(...values) * 0.9);
+        const max = Math.max(...values) * 1.1;
+        const range = max - min || 1;
+
+        // Draw grid
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = height - padding - (i / 4) * (height - 2 * padding);
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(width - 10, y);
+            ctx.stroke();
+
+            // Y-axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            const label = (min + (i / 4) * range).toFixed(1);
+            ctx.fillText(`${label}GB`, padding - 5, y + 3);
+        }
+
+        // Draw line
+        ctx.strokeStyle = '#4a90d9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        this.memoryHistory.forEach((point, index) => {
+            const x = padding + (index / (this.maxHistoryPoints - 1)) * (width - padding - 10);
+            const y = height - padding - ((point.value - min) / range) * (height - 2 * padding);
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+
+        ctx.stroke();
+
+        // Draw fill
+        ctx.fillStyle = 'rgba(74, 144, 217, 0.1)';
+        ctx.lineTo(width - 10, height - padding);
+        ctx.lineTo(padding, height - padding);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    drawResponseChart() {
+        const canvas = document.getElementById('response-chart');
+        if (!canvas || this.responseTimeHistory.length < 2) return;
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 40;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Find min/max for scaling
+        const values = this.responseTimeHistory.map(h => h.value);
+        const max = Math.max(5, ...values) * 1.1;
+
+        // Draw grid
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = height - padding - (i / 4) * (height - 2 * padding);
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(width - 10, y);
+            ctx.stroke();
+
+            // Y-axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            const label = ((i / 4) * max).toFixed(1);
+            ctx.fillText(`${label}s`, padding - 5, y + 3);
+        }
+
+        // Draw line
+        ctx.strokeStyle = '#00b894';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        this.responseTimeHistory.forEach((point, index) => {
+            const x = padding + (index / (this.maxHistoryPoints - 1)) * (width - padding - 10);
+            const y = height - padding - (point.value / max) * (height - 2 * padding);
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+
+        ctx.stroke();
+
+        // Draw fill
+        ctx.fillStyle = 'rgba(0, 184, 148, 0.1)';
+        ctx.lineTo(width - 10, height - padding);
+        ctx.lineTo(padding, height - padding);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    initEmotionLegend() {
+        const legend = document.getElementById('emotion-legend');
+        if (!legend) return;
+
+        legend.innerHTML = '';
+        this.emotions.forEach(emotion => {
+            const item = document.createElement('div');
+            item.className = 'emotion-item';
+            item.innerHTML = `
+                <span class="emotion-dot" style="background: ${this.emotionColors[emotion]}"></span>
+                <span>${this.capitalizeFirst(emotion)}</span>
+                <span class="emotion-value" id="emotion-${emotion}">--</span>
+            `;
+            legend.appendChild(item);
+        });
+    }
+
+    capitalizeFirst(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    updateEmotions(emotions) {
+        if (!emotions) return;
+
+        // Update emotion values
+        this.emotions.forEach(name => {
+            const el = document.getElementById(`emotion-${name}`);
+            if (el && emotions[name] !== undefined) {
+                const value = emotions[name];
+                el.textContent = (value * 100).toFixed(0) + '%';
+
+                // Color code based on intensity
+                el.className = 'emotion-value';
+                if (value > 0.8) el.classList.add('high');
+                else if (value > 0.6) el.classList.add('medium');
+                else el.classList.add('low');
+            }
+        });
+
+        // Draw emotion radar chart
+        this.drawEmotionRadar(emotions);
+    }
+
+    drawEmotionRadar(emotions) {
+        const canvas = document.getElementById('emotion-radar');
+        if (!canvas || !emotions) return;
+
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = Math.min(centerX, centerY) - 50;
+
+        const angleStep = (2 * Math.PI) / this.emotions.length;
+
+        // Clear
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw grid circles
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 4; i++) {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, (radius / 4) * i, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+
+        // Draw axis lines and labels
+        this.emotions.forEach((emotion, i) => {
+            const angle = i * angleStep - Math.PI / 2;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            // Labels
+            const labelX = centerX + Math.cos(angle) * (radius + 25);
+            const labelY = centerY + Math.sin(angle) * (radius + 25);
+
+            ctx.fillStyle = '#666';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.capitalizeFirst(emotion).substring(0, 3), labelX, labelY);
+        });
+
+        // Draw emotion polygon
+        ctx.fillStyle = 'rgba(74, 144, 217, 0.3)';
+        ctx.strokeStyle = '#4a90d9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        this.emotions.forEach((name, i) => {
+            const value = emotions[name] || 0.5;
+            const angle = i * angleStep - Math.PI / 2;
+            const x = centerX + Math.cos(angle) * radius * value;
+            const y = centerY + Math.sin(angle) * radius * value;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw points
+        this.emotions.forEach((name, i) => {
+            const value = emotions[name] || 0.5;
+            const angle = i * angleStep - Math.PI / 2;
+            const x = centerX + Math.cos(angle) * radius * value;
+            const y = centerY + Math.sin(angle) * radius * value;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = this.emotionColors[name];
+            ctx.fill();
+        });
+    }
+
+    updatePlatforms(platforms) {
+        const container = document.getElementById('platform-grid');
+        if (!container || !platforms) return;
+
+        container.innerHTML = '';
+
+        Object.entries(platforms).forEach(([name, info]) => {
+            const div = document.createElement('div');
+            div.className = `platform-item ${info.status}`;
+            div.innerHTML = `
+                <span class="platform-name">${this.capitalizeFirst(name)}</span>
+                <span class="platform-status">${info.status}</span>
+            `;
+            container.appendChild(div);
+        });
+
+        // If no platforms, show placeholder
+        if (Object.keys(platforms).length === 0) {
+            container.innerHTML = '<div class="platform-item unknown"><span class="platform-name">No Platforms</span><span class="platform-status">--</span></div>';
+        }
+    }
+
+    updateAlerts(alerts) {
+        const container = document.getElementById('alerts-container');
+        const countEl = document.getElementById('alert-count');
+
+        if (countEl) {
+            countEl.textContent = alerts && alerts.length > 0 ? `(${alerts.length})` : '';
+        }
+
+        if (!container) return;
+
+        if (!alerts || alerts.length === 0) {
+            container.innerHTML = '<div class="alert-placeholder">No active alerts</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        alerts.forEach(alert => {
+            const div = document.createElement('div');
+            div.className = `alert-item ${alert.level}`;
+            div.id = `alert-${alert.id}`;
+            div.innerHTML = `
+                <div class="alert-content">
+                    <div class="alert-header">
+                        <span class="alert-severity">${alert.level.toUpperCase()}</span>
+                        <span class="alert-time">${new Date(alert.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="alert-message">${alert.message}</div>
+                    <div class="alert-rule">Rule: ${alert.rule_name}</div>
+                </div>
+                <div class="alert-actions">
+                    ${!alert.acknowledged ? `<button class="btn-ack" onclick="dashboard.acknowledgeAlert('${alert.id}')">Ack</button>` : ''}
+                    <button class="btn-resolve" onclick="dashboard.resolveAlert('${alert.id}')">Resolve</button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    addAlert(alert) {
+        // Refresh alerts list
+        this.fetchInitialData();
+    }
+
+    async acknowledgeAlert(alertId) {
+        try {
+            const response = await fetch(`/api/alerts/${alertId}/ack`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                this.fetchInitialData();
+            }
+        } catch (error) {
+            console.error('Failed to acknowledge alert:', error);
+        }
+    }
+
+    async resolveAlert(alertId) {
+        try {
+            const response = await fetch(`/api/alerts/${alertId}/resolve`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                this.fetchInitialData();
+            }
+        } catch (error) {
+            console.error('Failed to resolve alert:', error);
+        }
+    }
+
+    updateTimestamp(timestamp) {
+        const el = document.getElementById('last-update');
+        if (el && timestamp) {
+            const date = new Date(timestamp);
+            el.textContent = date.toLocaleTimeString();
+        }
+
+        // Update uptime
+        const uptimeEl = document.getElementById('uptime');
+        if (uptimeEl) {
+            uptimeEl.textContent = this.formatUptime(Date.now() - this.startTime);
+        }
+    }
+
+    formatUptime(ms) {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}d ${hours % 24}h`;
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+        return `${seconds}s`;
+    }
+
+    setupEventListeners() {
+        // Handle window resize for canvas
+        window.addEventListener('resize', () => {
+            this.drawEmotionRadar(this.lastEmotions);
+            this.drawMemoryChart();
+            this.drawResponseChart();
+        });
+
+        // Track start time for uptime
+        this.startTime = Date.now();
+    }
+}
+
+// Initialize dashboard when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.dashboard = new DemiDashboard();
+});

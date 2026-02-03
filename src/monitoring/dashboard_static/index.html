@@ -18,6 +18,22 @@
             --text-color: #2d3436;
             --text-muted: #636e72;
             --border-color: #dfe6e9;
+            --shadow-color: rgba(0, 0, 0, 0.08);
+        }
+
+        [data-theme="dark"] {
+            --primary-color: #a29bfe;
+            --secondary-color: #6c5ce7;
+            --success-color: #00d2d3;
+            --warning-color: #f9ca24;
+            --danger-color: #ff6348;
+            --info-color: #54a0ff;
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #eaeaea;
+            --text-muted: #b8b8b8;
+            --border-color: #2d3561;
+            --shadow-color: rgba(0, 0, 0, 0.3);
         }
 
         * {
@@ -87,7 +103,8 @@
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 24px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 8px var(--shadow-color);
+            transition: background 0.3s ease, box-shadow 0.3s ease;
         }
 
         .card h2 {
@@ -409,6 +426,26 @@
             height: 100%;
         }
 
+        /* Theme Toggle */
+        .theme-toggle {
+            background: none;
+            border: 2px solid var(--border-color);
+            color: var(--text-color);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-color);
+            border-color: var(--primary-color);
+        }
+
         /* Footer */
         footer {
             margin-top: 40px;
@@ -486,7 +523,12 @@
     <div class="container">
         <header>
             <h1>🔮 Demi Health Dashboard</h1>
-            <div class="connection-status connecting" id="connection-status">Connecting...</div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+                    <span id="theme-icon">🌙</span>
+                </button>
+                <div class="connection-status connecting" id="connection-status">Connecting...</div>
+            </div>
         </header>
 
         <div class="dashboard-grid">
