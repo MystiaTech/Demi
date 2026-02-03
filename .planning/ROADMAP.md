@@ -374,15 +374,47 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 
 ## Phase 8: Voice I/O
 
-**Goal:** Implement speech-to-text and text-to-speech for voice communication.
+**Goal:** Implement speech-to-text and text-to-speech for voice communication with emotional modulation.
 
-**Status:** Pending
+**Status:** Planned ✅
+**Plans Created:** 3 (Voice Foundation, Discord Voice Integration, Android Voice Integration)
 
-**Why This Phase:** Voice adds another dimension to Demi's authenticity. Whisper for STT, pyttsx3 for TTS.
+**Duration:** ~4 hours (estimated)
 
-**Requirements Mapped:** LLM-02 (voice component) (1)
+**Why This Phase:** Voice adds another dimension to Demi's authenticity. Whisper for STT, pyttsx3 for TTS, with emotional tone modulation to maintain personality consistency.
 
-**Dependencies:** Phase 4 (LLM)
+**Requirements Mapped:** LLM-02 (voice component), VOICE-01, VOICE-02, VOICE-03, VOICE-04 (5)
+
+**Dependencies:** Phase 4 (LLM), Phase 5 (Discord), Phase 6 (Android)
+
+**Success Criteria:**
+
+1. Whisper-based STT transcribes voice input accurately (<5 second latency)
+2. pyttsx3-based TTS speaks responses with emotional tone modulation
+3. Discord voice channel integration with always-listening mode and wake word detection
+4. Android app voice communication via WebSocket with background service
+5. Voice responses match personality and emotional state (rate, volume, tone variation)
+
+**Technical Deliverables:**
+- WhisperSTT and pyttsx3TTS classes with emotional modulation
+- Discord voice channel management and wake word detection
+- Android VoiceManager and VoiceService for mobile voice interaction
+- WebSocket voice message handling for real-time communication
+- Voice configuration integration with existing settings
+
+**Files Created:**
+- `src/voice/__init__.py` - Voice module exports and configuration
+- `src/voice/stt.py` - Whisper-based speech-to-text
+- `src/voice/tts.py` - pyttsx3-based text-to-speech with emotion
+- `src/voice/voice_channel.py` - Discord voice channel management
+- `src/voice/android_voice.py` - Android voice processing backend
+- `android/app/src/main/java/com/demi/voice/VoiceManager.kt` - Android voice recording/playback
+- `android/app/src/main/java/com/demi/voice/VoiceService.kt` - Background voice service
+
+**Plans:**
+- [ ] 08-01-PLAN.md — Voice I/O Foundation (STT/TTS integration) ✅
+- [ ] 08-02-PLAN.md — Discord Voice Integration ✅
+- [ ] 08-03-PLAN.md — Android Voice Integration ✅
 
 ---
 
@@ -423,17 +455,17 @@ The phases follow the research-validated build order: Foundation → Orchestrati
 | 5 | DISC-01-05, AUTO-02 | 6 | ✅ Complete |
 | 6 | ANDR-01-04 | 4 | ✅ Complete |
 | 7 | RAMB-01-05, AUTO-03-05 | 8 | ✅ Complete |
-| 8 | LLM-02 (voice) | 1 | ⏳ Pending |
+| 8 | LLM-02 (voice), VOICE-01-04 | 5 | ⏳ Planned |
 | 9 | HEALTH-01-04 | 4 | ⏳ Pending |
 | 10 | Documentation | — | ⏳ Pending |
-| **Total** | | **40** | 36/40 (7 phases complete, 2 pending) |
+| **Total** | | **40** | 36/40 (7 phases complete, 1 planned, 2 pending) |
 
 ---
 
 ## Progress
 
 ```
-[██████████████████████████████████████████████████████████████████████████████████████████] 90% (7 phases complete, 2 pending)
+[██████████████████████████████████████████████████████████████████████████████████████████] 90% (7 phases complete, 1 planned, 2 pending)
 Phase 1: [████████████████████████████████] 100% (4/4 plans)
 Phase 2: [████████████████████████████████] 100% (5/5 plans)
 Phase 3: [████████████████████████████████] 100% (4/4 plans)
@@ -441,5 +473,6 @@ Phase 4: [███████████████████████�
 Phase 5: [████████████████████████████████] 100% (3/3 plans)
 Phase 6: [████████████████████████████████] 100% (4/4 plans)
 Phase 7: [████████████████████████████████] 100% (4/4 plans)
-Phase 8-10: [░░░░░░░░░░░░░░░] 0% (7 plans remaining)
+Phase 8: [░░░░░░░░░░░░░░░] 0% (3 plans ready)
+Phase 9-10: [░░░░░░░░░░░░░░░] 0% (4 plans remaining)
 ```
