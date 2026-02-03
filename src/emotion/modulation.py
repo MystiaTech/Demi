@@ -53,14 +53,16 @@ class PersonalityModulator:
     Bridges EmotionalState → response generation in LLM.
     """
 
-    def __init__(self, traits_file: Optional[str] = None):
+    def __init__(self, traits_file: Optional[str] = None, logger=None):
         """
         Initialize modulator with personality traits.
 
         Args:
             traits_file: Path to personality_traits.yaml
                         (defaults to src/emotion/personality_traits.yaml)
+            logger: Optional logger instance
         """
+        self.logger = logger
         if traits_file is None:
             base_dir = os.path.dirname(__file__)
             traits_file = os.path.join(base_dir, "personality_traits.yaml")
