@@ -30,6 +30,7 @@ class DemiConfig:
     platforms: Dict[str, Any]
     lm: Dict[str, Any]
     conductor: Dict[str, Any]
+    dashboard: Dict[str, Any]
 
     @classmethod
     def load(cls, config_path: str = "src/core/defaults.yaml") -> "DemiConfig":
@@ -81,12 +82,39 @@ class DemiConfig:
             "platforms": defaults.get("platforms", {}),
             "lm": defaults.get("lm", {}),
             "conductor": defaults.get("conductor", {}),
+            "dashboard": {
+                **defaults.get("dashboard", {}),
+                "enabled": _env_bool(
+                    "DEMI_DASHBOARD_ENABLED",
+                    defaults.get("dashboard", {}).get("enabled", True),
+                ),
+                "host": _env_str(
+                    "DEMI_DASHBOARD_HOST",
+                    defaults.get("dashboard", {}).get("host", "0.0.0.0"),
+                ),
+                "port": int(
+                    os.getenv(
+                        "DEMI_DASHBOARD_PORT",
+                        defaults.get("dashboard", {}).get("port", 8080),
+                    )
+                ),
+                "auto_launch_browser": _env_bool(
+                    "DEMI_DASHBOARD_AUTO_LAUNCH",
+                    defaults.get("dashboard", {}).get("auto_launch_browser", True),
+                ),
+                "update_interval_sec": int(
+                    os.getenv(
+                        "DEMI_DASHBOARD_UPDATE_INTERVAL",
+                        defaults.get("dashboard", {}).get("update_interval_sec", 5),
+                    )
+                ),
+            },
         }
         return cls(**config)
 
     def update(self, section: str, key: str, value: Any):
         """Update a specific configuration value at runtime"""
-        valid_sections = ["system", "emotional_system", "platforms", "lm", "conductor"]
+        valid_sections = ["system", "emotional_system", "platforms", "lm", "conductor", "dashboard"]
         if section not in valid_sections:
             raise ValueError(f"Invalid configuration section: {section}")
 

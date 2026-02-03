@@ -14,6 +14,8 @@ This is the central nervous system that brings all components together.
 import asyncio
 import signal
 import time
+import webbrowser
+import threading
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -38,6 +40,8 @@ from src.llm import (
 )
 from src.emotion.persistence import EmotionPersistence
 from src.emotion.modulation import PersonalityModulator
+from src.emotion.interactions import InteractionHandler
+from src.monitoring.dashboard_server import DashboardServer
 
 logger = get_logger()
 
@@ -100,24 +104,6 @@ class Conductor:
         )
         self.llm_available = False
 
-        # Emotion and personality systems (lazy initialization to avoid circular deps)
-        self.emotion_persistence = None
-        self.personality_modulator = None
-
-        # Prompt builder with codebase context
-        self.prompt_builder = PromptBuilder(
-            logger=self._logger,
-            token_counter=self.llm._count_tokens,
-            codebase_reader=self.codebase_reader,
-        )
-
-        # Conversation history manager
-        self.conversation_history = ConversationHistory(logger=self._logger)
-
-        # Response processor (will be initialized when needed)
-        self.response_processor = None
-        self.llm_available = False
-
         # Emotion and personality systems
         self.emotion_persistence = EmotionPersistence(
             db_manager=self._db_manager, logger=self._logger
@@ -135,14 +121,19 @@ class Conductor:
         self.conversation_history = ConversationHistory(logger=self._logger)
 
         # Response processor
+        db_session = self._db_manager.get_session()
+        interaction_handler = InteractionHandler()
         self.response_processor = ResponseProcessor(
             logger=self._logger,
-            token_counter=self.llm._count_tokens,
-            emotion_persistence=self.emotion_persistence,
+            db_session=db_session,
+            interaction_handler=interaction_handler,
         )
 
         # Autonomy coordinator (initialized after other systems are ready)
         self.autonomy_coordinator = None
+
+        # Dashboard server (initialized if enabled)
+        self._dashboard: Optional[DashboardServer] = None
 
         # State tracking
         self._running = False
@@ -284,6 +275,17 @@ class Conductor:
             except Exception as e:
                 self._logger.error(f"autonomy_system_initialization_failed: {str(e)}")
                 return False
+
+            # Step 8.5: Start dashboard server (if enabled)
+            if self._config.dashboard.get("enabled", True):
+                self._logger.info("Starting dashboard server...")
+                try:
+                    if not await self._start_dashboard_server():
+                        self._logger.warning("Dashboard server failed to start, continuing without it")
+                    else:
+                        self._logger.info("Dashboard server started")
+                except Exception as e:
+                    self._logger.warning(f"dashboard_server_startup_failed: {str(e)}")
 
             # Step 9: Register signal handlers
             self._logger.info("Registering signal handlers...")
@@ -553,6 +555,13 @@ class Conductor:
             except Exception as e:
                 self._logger.error(f"autonomy_system_shutdown_failed: {str(e)}")
 
+            # Step 3.5: Stop dashboard server
+            self._logger.info("Stopping dashboard server...")
+            try:
+                await self._stop_dashboard_server()
+            except Exception as e:
+                self._logger.error(f"dashboard_server_shutdown_failed: {str(e)}")
+
             # Step 4: Stop background loops
             self._logger.info("Stopping background tasks...")
             try:
@@ -789,6 +798,85 @@ class Conductor:
                     self._logger.warning("Failed to stop autonomy system gracefully")
         except Exception as e:
             self._logger.error(f"Error stopping autonomy system: {e}")
+
+    async def _start_dashboard_server(self) -> bool:
+        """
+        Start the dashboard server.
+
+        Returns:
+            True if dashboard started successfully
+        """
+        try:
+            dashboard_config = self._config.dashboard
+            host = dashboard_config.get("host", "0.0.0.0")
+            port = dashboard_config.get("port", 8080)
+            update_interval = dashboard_config.get("update_interval_sec", 5)
+
+            # Initialize dashboard server
+            self._dashboard = DashboardServer(
+                host=host,
+                port=port,
+                update_interval=update_interval,
+            )
+
+            self._logger.info(
+                f"Dashboard server initialized on {host}:{port} "
+                f"(update interval: {update_interval}s)"
+            )
+
+            # Start dashboard server as background task
+            dashboard_task = asyncio.create_task(self._dashboard.start())
+            self._background_tasks.append(dashboard_task)
+
+            # Give the server a moment to start
+            await asyncio.sleep(0.5)
+
+            # Launch browser if configured
+            if dashboard_config.get("auto_launch_browser", True):
+                self._launch_dashboard_browser(host, port)
+
+            self._logger.info(f"Dashboard server started successfully")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to start dashboard server: {e}")
+            return False
+
+    def _launch_dashboard_browser(self, host: str, port: int) -> None:
+        """
+        Launch dashboard in default browser in a separate thread.
+
+        Args:
+            host: Dashboard host
+            port: Dashboard port
+        """
+        def open_browser():
+            try:
+                # Convert 0.0.0.0 to localhost for browser access
+                browser_host = "localhost" if host == "0.0.0.0" else host
+                url = f"http://{browser_host}:{port}"
+                self._logger.info(f"Opening dashboard in browser: {url}")
+                webbrowser.open(url)
+            except Exception as e:
+                self._logger.warning(f"Failed to open browser: {e}")
+                self._logger.info(
+                    f"Access dashboard manually at "
+                    f"http://{'localhost' if host == '0.0.0.0' else host}:{port}"
+                )
+
+        # Launch browser in separate thread to avoid blocking
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
+
+    async def _stop_dashboard_server(self) -> None:
+        """Stop the dashboard server."""
+        try:
+            if self._dashboard:
+                self._logger.info("Stopping dashboard server...")
+                await self._dashboard.stop()
+                self._dashboard = None
+                self._logger.info("Dashboard server stopped")
+        except Exception as e:
+            self._logger.error(f"Error stopping dashboard server: {e}")
 
     def send_discord_message(self, content: str, channel_id: str) -> bool:
         """

@@ -150,3 +150,10 @@ monitoring:
   error_report_enabled: true
   error_report_file: "logs/errors.json"
   profile_enabled: false
+
+dashboard:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  auto_launch_browser: true
+  update_interval_sec: 5
