@@ -7,6 +7,14 @@
 # Discord Integration (Phase 05)
 discord.py>=2.6.0
 
+# Discord Voice Integration (Phase 08-03)
+# Note: Requires FFmpeg and libopus system packages
+# Ubuntu/Debian: sudo apt-get install ffmpeg libopus0
+# macOS: brew install ffmpeg opus
+# Windows: Download from https://ffmpeg.org/download.html
+PyNaCl>=1.5.0  # Required for discord.py voice encryption
+opuslib>=3.0.1  # Opus codec for Discord audio decode
+
 # Android API (Phase 06)
 fastapi>=0.115.0
 uvicorn>=0.32.0
@@ -31,6 +39,15 @@ scikit-learn>=1.3.0  # Optional - falls back gracefully if unavailable
 
 # Logging
 structlog>=24.1.0  # Optional - falls back to standard logging
+
+# Voice I/O (Phase 08) - TTS
+pyttsx3>=2.90  # Cross-platform TTS
+
+# Voice I/O (Phase 08)
+faster-whisper>=1.0.0  # or openai-whisper
+pyaudio>=0.2.11
+webrtcvad>=2.0.10
+numpy>=1.24.0
 
 # Development
 pytest>=7.4.0

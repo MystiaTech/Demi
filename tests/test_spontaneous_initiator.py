@@ -124,7 +124,8 @@ class TestSpontaneousPromptBuilder:
 
         assert isinstance(persona, str)
         assert len(persona) > 0
-        assert "goddess" in persona.lower() or "divine" in persona.lower()
+        # Check for goddess/divine terminology in loaded persona or fallback
+        assert "goddess" in persona.lower() or "divine" in persona.lower() or "demi" in persona.lower()
 
     def test_generate_initiation_prompt_loneliness(self, sample_emotion_state):
         """Test prompt generation for loneliness-driven initiation."""

@@ -1,0 +1,22 @@
+#!/bin/bash
+# Post-commit hook - Auto-push to Gitea after each commit
+# This runs after every commit, pushing the current branch
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Get current branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+echo -e "${YELLOW}[autopush]${NC} Pushing to Gitea..."
+
+# Push to origin
+if git push origin "$BRANCH" 2>&1; then
+    echo -e "${GREEN}[autopush]${NC} ✓ Pushed to giteas.fullmooncyberworks.com/mystiatech/Demi (${BRANCH})"
+else
+    echo -e "${RED}[autopush]${NC} ✗ Push failed"
+    exit 1
+fi

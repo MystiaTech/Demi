@@ -1,6 +1,7 @@
 """Discord bot integration for Demi.
 
 Provides Discord presence, message routing, and bidirectional communication.
+Includes voice channel integration for voice commands and responses.
 """
 
 import os
@@ -16,6 +17,15 @@ from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
 from src.models.rambles import Ramble, RambleStore
 from src.autonomy.coordinator import AutonomyCoordinator
+
+# Voice integration (optional)
+try:
+    from src.integrations.discord_voice import DiscordVoiceClient, VoiceSession
+    HAS_VOICE = True
+except ImportError:
+    HAS_VOICE = False
+    DiscordVoiceClient = None
+    VoiceSession = None
 
 
 # Emotion to Discord color mapping
@@ -301,6 +311,7 @@ class DiscordBot(BasePlatform):
         self._initialized = False
         self._bot_task: Optional[asyncio.Task] = None
         self.autonomy_coordinator: Optional[AutonomyCoordinator] = None
+        self.voice_client: Optional[DiscordVoiceClient] = None
 
     async def initialize(self, conductor) -> bool:
         """Initialize Discord bot with intents and event handlers.
@@ -468,6 +479,20 @@ class DiscordBot(BasePlatform):
             else:
                 self.logger.warning("Autonomy coordinator not available in conductor")
 
+            # Initialize voice client if enabled
+            voice_enabled = os.getenv("DISCORD_VOICE_ENABLED", "false").lower() == "true"
+            if voice_enabled and HAS_VOICE:
+                try:
+                    self.voice_client = DiscordVoiceClient(self.bot, conductor)
+                    self.logger.info("Discord voice client initialized")
+                except Exception as e:
+                    self.logger.error(f"Voice client initialization failed: {e}")
+            elif voice_enabled and not HAS_VOICE:
+                self.logger.warning("Voice features enabled but voice module not available")
+
+            # Register voice commands
+            self._register_voice_commands()
+
             self._initialized = True
             self._status = "initializing"
 
@@ -481,10 +506,118 @@ class DiscordBot(BasePlatform):
             self._status = "error"
             return False
 
+    def _register_voice_commands(self):
+        """Register voice-related bot commands."""
+        
+        @self.bot.command(name="join")
+        async def join_voice(ctx):
+            """Join the user's current voice channel."""
+            if not self.voice_client:
+                await ctx.reply("Voice features are disabled.", mention_author=False)
+                return
+            
+            if not ctx.author.voice:
+                await ctx.reply(
+                    "You need to be in a voice channel first, mortal.", 
+                    mention_author=False
+                )
+                return
+            
+            channel = ctx.author.voice.channel
+            success = await self.voice_client.join_channel(channel)
+            
+            if success:
+                embed = discord.Embed(
+                    title="🔮 Voice Connected",
+                    description="I have arrived. Say 'Demi' to command me.",
+                    color=discord.Color.purple()
+                )
+                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+            else:
+                await ctx.reply(
+                    "I cannot join that channel.", 
+                    mention_author=False
+                )
+        
+        @self.bot.command(name="leave")
+        async def leave_voice(ctx):
+            """Leave the voice channel."""
+            if not self.voice_client:
+                await ctx.reply("Voice features are disabled.", mention_author=False)
+                return
+            
+            success = await self.voice_client.leave_channel(ctx.guild.id)
+            
+            if success:
+                embed = discord.Embed(
+                    title="👋 Voice Disconnected",
+                    description="Call me when you need divine wisdom.",
+                    color=discord.Color.purple()
+                )
+                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+            else:
+                await ctx.reply(
+                    "I'm not in a voice channel.", 
+                    mention_author=False
+                )
+        
+        @self.bot.command(name="voice")
+        async def voice_control(ctx, action: Optional[str] = None):
+            """Control voice settings: !voice on | !voice off"""
+            if not self.voice_client:
+                await ctx.reply("Voice features are disabled.", mention_author=False)
+                return
+            
+            session = self.voice_client.get_session(ctx.guild.id)
+            if not session:
+                await ctx.reply(
+                    "I'm not in a voice channel.", 
+                    mention_author=False
+                )
+                return
+            
+            if action is None:
+                # Show current status
+                status = "enabled" if self.voice_client.listen_after_response else "disabled"
+                await ctx.reply(
+                    f"Always-listening mode is currently {status}. Use `!voice on` or `!voice off`.",
+                    mention_author=False
+                )
+                return
+            
+            if action.lower() == "on":
+                self.voice_client.start_listening(ctx.guild.id)
+                embed = discord.Embed(
+                    title="🎙️ Listening Enabled",
+                    description="Always-listening mode on. I hear everything.",
+                    color=discord.Color.green()
+                )
+                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+            
+            elif action.lower() == "off":
+                self.voice_client.stop_listening(ctx.guild.id)
+                embed = discord.Embed(
+                    title="🔇 Listening Disabled",
+                    description="Wake-word only mode. Say 'Demi' to get my attention.",
+                    color=discord.Color.orange()
+                )
+                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+            
+            else:
+                await ctx.reply(
+                    "Usage: `!voice on` | `!voice off`", 
+                    mention_author=False
+                )
+    
     async def shutdown(self) -> None:
         """Shutdown Discord bot gracefully."""
         try:
             self.logger.info("Discord bot shutting down...")
+
+            # Shutdown voice client
+            if self.voice_client:
+                await self.voice_client.leave_all_channels()
+                self.logger.info("Voice client shutdown")
 
             # Autonomy system is managed by conductor, no need to stop here
 

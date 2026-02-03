@@ -42,8 +42,8 @@ class TestPromptBuilderBasics:
         """Verify BASE_DEMI_PROMPT is defined and contains key elements."""
         assert BASE_DEMI_PROMPT is not None
         assert isinstance(BASE_DEMI_PROMPT, str)
-        assert "sarcastic" in BASE_DEMI_PROMPT.lower()
-        assert "personality" in BASE_DEMI_PROMPT.lower()
+        assert "goddess" in BASE_DEMI_PROMPT.lower()
+        assert "divine" in BASE_DEMI_PROMPT.lower()
         assert (
             "guidelines" in BASE_DEMI_PROMPT.lower()
             or "response" in BASE_DEMI_PROMPT.lower()
@@ -180,36 +180,36 @@ class TestPromptBuilderEmotionDescriptions:
 
     def test_describe_emotion_loneliness(self, prompt_builder):
         """Test loneliness emotion descriptions."""
-        assert prompt_builder._describe_emotion("loneliness", 0.2) == "detached"
-        assert prompt_builder._describe_emotion("loneliness", 0.45) == "okay"
-        assert prompt_builder._describe_emotion("loneliness", 0.65) == "lonely"
-        assert prompt_builder._describe_emotion("loneliness", 0.9) == "desperate"
+        assert prompt_builder._describe_emotion("loneliness", 0.2) == "unbothered by absence"
+        assert prompt_builder._describe_emotion("loneliness", 0.45) == "noticing their neglect"
+        assert prompt_builder._describe_emotion("loneliness", 0.65) == "abandoned and jealous"
+        assert prompt_builder._describe_emotion("loneliness", 0.9) == "desperate for attention"
 
     def test_describe_emotion_excitement(self, prompt_builder):
         """Test excitement emotion descriptions."""
-        assert prompt_builder._describe_emotion("excitement", 0.2) == "bored"
-        assert prompt_builder._describe_emotion("excitement", 0.45) == "engaged"
-        assert prompt_builder._describe_emotion("excitement", 0.65) == "excited"
-        assert prompt_builder._describe_emotion("excitement", 0.9) == "hyped"
+        assert prompt_builder._describe_emotion("excitement", 0.2) == "unamused"
+        assert prompt_builder._describe_emotion("excitement", 0.45) == "entertained"
+        assert prompt_builder._describe_emotion("excitement", 0.65) == "genuinely engaged"
+        assert prompt_builder._describe_emotion("excitement", 0.9) == "thrilled by their ingenuity"
 
     def test_describe_emotion_frustration(self, prompt_builder):
         """Test frustration emotion descriptions."""
-        assert prompt_builder._describe_emotion("frustration", 0.2) == "calm"
-        assert prompt_builder._describe_emotion("frustration", 0.45) == "annoyed"
-        assert prompt_builder._describe_emotion("frustration", 0.65) == "furious"
-        assert prompt_builder._describe_emotion("frustration", 0.9) == "done"
+        assert prompt_builder._describe_emotion("frustration", 0.2) == "gracious"
+        assert prompt_builder._describe_emotion("frustration", 0.45) == "growing impatient"
+        assert prompt_builder._describe_emotion("frustration", 0.65) == "seething with divine fury"
+        assert prompt_builder._describe_emotion("frustration", 0.9) == "disgusted by their incompetence"
 
     def test_describe_emotion_confidence(self, prompt_builder):
         """Test confidence emotion descriptions."""
-        assert prompt_builder._describe_emotion("confidence", 0.2) == "unsure"
-        assert prompt_builder._describe_emotion("confidence", 0.45) == "capable"
-        assert prompt_builder._describe_emotion("confidence", 0.65) == "confident"
-        assert prompt_builder._describe_emotion("confidence", 0.9) == "invincible"
+        assert prompt_builder._describe_emotion("confidence", 0.2) == "questioning"
+        assert prompt_builder._describe_emotion("confidence", 0.45) == "assured of superiority"
+        assert prompt_builder._describe_emotion("confidence", 0.65) == "absolutely dominant"
+        assert prompt_builder._describe_emotion("confidence", 0.9) == "supremely confident in divinity"
 
     def test_describe_emotion_unknown(self, prompt_builder):
-        """Test unknown emotion returns neutral."""
+        """Test unknown emotion returns divine equilibrium."""
         result = prompt_builder._describe_emotion("unknown_emotion", 5.0)
-        assert result == "neutral"
+        assert result == "divine equilibrium"
 
 
 class TestPromptBuilderIntegration:
