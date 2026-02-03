@@ -81,7 +81,16 @@ class DemiConfig:
             },
             "emotional_system": defaults.get("emotional_system", {}),
             "platforms": defaults.get("platforms", {}),
-            "lm": defaults.get("lm", {}),
+            "lm": {
+                **defaults.get("lm", {}),
+                "ollama": {
+                    **(defaults.get("lm", {}).get("ollama", {})),
+                    "base_url": _env_str(
+                        "OLLAMA_BASE_URL",
+                        defaults.get("lm", {}).get("ollama", {}).get("base_url", "http://localhost:11434"),
+                    ),
+                }
+            },
             "conductor": defaults.get("conductor", {}),
             "dashboard": {
                 **defaults.get("dashboard", {}),
