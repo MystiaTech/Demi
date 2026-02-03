@@ -352,6 +352,12 @@ class DiscordBot(BasePlatform):
                     bot_id=self.bot.user.id,
                     guild_count=len(self.bot.guilds),
                 )
+                print(f"\n{'='*60}")
+                print(f"✅ DISCORD BOT ONLINE!")
+                print(f"   Bot: {self.bot.user}")
+                print(f"   User ID: {self.bot.user.id}")
+                print(f"   Servers: {len(self.bot.guilds)}")
+                print(f"{'='*60}\n")
                 self._status = "online"
 
             @self.bot.event
@@ -395,6 +401,7 @@ class DiscordBot(BasePlatform):
                     is_dm=is_dm,
                     content_length=len(content),
                 )
+                print(f"💬 Discord message from {message.author}: {content[:50]}..." if len(content) > 50 else f"💬 Discord message from {message.author}: {content}")
 
                 # Skip empty messages after mention removal
                 if not content or len(content) == 0:
@@ -451,6 +458,7 @@ class DiscordBot(BasePlatform):
                         user_id=user_id,
                         response_length=len(response_text),
                     )
+                    print(f"✅ Response sent: {response_text[:50]}..." if len(response_text) > 50 else f"✅ Response sent: {response_text}")
 
                 except Exception as e:
                     self.logger.error(
@@ -458,6 +466,7 @@ class DiscordBot(BasePlatform):
                         user_id=user_id,
                         error_type=type(e).__name__,
                     )
+                    print(f"❌ Error handling message: {str(e)}")
                     # Send error message to user
                     error_msg = "Oops, something went wrong. Try again in a moment."
                     await message.reply(error_msg, mention_author=False)
@@ -499,9 +508,13 @@ class DiscordBot(BasePlatform):
         """
         try:
             self.conductor = conductor
+            self.logger.info(f"Discord bot setup: Starting bot with token: {self.token[:20]}...")
+            print(f"🤖 Discord Bot: Starting connection...")
 
             # Start bot in background (non-blocking)
+            self.logger.info("Creating asyncio task for bot.start()")
             self._bot_task = asyncio.create_task(self.bot.start(self.token))
+            self.logger.info("Bot start task created successfully")
 
             # Get autonomy coordinator from conductor
             if hasattr(conductor, "autonomy_coordinator"):
@@ -523,11 +536,13 @@ class DiscordBot(BasePlatform):
 
             self._status = "online"
             self.logger.info("Discord bot setup complete and starting")
+            print("✅ Discord bot setup complete - waiting for connection...")
             return True
 
         except Exception as e:
             self.logger.error(f"Discord bot setup failed: {e}")
             self._status = "error"
+            print(f"❌ Discord bot setup failed: {e}")
             return False
 
     def _register_voice_commands(self):
