@@ -42,6 +42,7 @@ from src.emotion.persistence import EmotionPersistence
 from src.emotion.modulation import PersonalityModulator
 from src.emotion.interactions import InteractionHandler
 from src.monitoring.dashboard_server import DashboardServer
+from src.mobile.api import MobileAPIServer
 
 logger = get_logger()
 
@@ -134,6 +135,9 @@ class Conductor:
 
         # Dashboard server (initialized if enabled)
         self._dashboard: Optional[DashboardServer] = None
+
+        # Mobile API server (initialized if enabled)
+        self._mobile_api: Optional[MobileAPIServer] = None
 
         # State tracking
         self._running = False
@@ -286,6 +290,17 @@ class Conductor:
                         self._logger.info("Dashboard server started")
                 except Exception as e:
                     self._logger.warning(f"dashboard_server_startup_failed: {str(e)}")
+
+            # Step 8.6: Start mobile API server (if enabled)
+            if self._config.mobile.get("enabled", True):
+                self._logger.info("Starting mobile API server...")
+                try:
+                    if not await self._start_mobile_api():
+                        self._logger.warning("Mobile API server failed to start, continuing without it")
+                    else:
+                        self._logger.info("Mobile API server started")
+                except Exception as e:
+                    self._logger.warning(f"mobile_api_server_startup_failed: {str(e)}")
 
             # Step 9: Register signal handlers
             self._logger.info("Registering signal handlers...")
@@ -561,6 +576,13 @@ class Conductor:
                 await self._stop_dashboard_server()
             except Exception as e:
                 self._logger.error(f"dashboard_server_shutdown_failed: {str(e)}")
+
+            # Step 3.6: Stop mobile API server
+            self._logger.info("Stopping mobile API server...")
+            try:
+                await self._stop_mobile_api()
+            except Exception as e:
+                self._logger.error(f"mobile_api_server_shutdown_failed: {str(e)}")
 
             # Step 4: Stop background loops
             self._logger.info("Stopping background tasks...")
@@ -877,6 +899,47 @@ class Conductor:
                 self._logger.info("Dashboard server stopped")
         except Exception as e:
             self._logger.error(f"Error stopping dashboard server: {e}")
+
+    async def _start_mobile_api(self) -> bool:
+        """
+        Start the mobile API server.
+
+        Returns:
+            True if mobile API started successfully
+        """
+        try:
+            mobile_config = self._config.mobile
+            host = mobile_config.get("host", "0.0.0.0")
+            port = mobile_config.get("port", 8081)
+
+            # Initialize mobile API server
+            self._mobile_api = MobileAPIServer(host=host, port=port)
+
+            self._logger.info(f"Mobile API server initialized on {host}:{port}")
+
+            # Start mobile API server as background task
+            mobile_task = asyncio.create_task(self._mobile_api.start(self))
+            self._background_tasks.append(mobile_task)
+
+            # Give the server a moment to start
+            await asyncio.sleep(0.5)
+
+            self._logger.info("Mobile API server started successfully")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to start mobile API server: {e}")
+            return False
+
+    async def _stop_mobile_api(self) -> None:
+        """Stop the mobile API server."""
+        try:
+            if self._mobile_api:
+                self._logger.info("Stopping mobile API server...")
+                await self._mobile_api.stop()
+                self._mobile_api = None
+                self._logger.info("Mobile API server stopped")
+        except Exception as e:
+            self._logger.error(f"Error stopping mobile API server: {e}")
 
     def send_discord_message(self, content: str, channel_id: str) -> bool:
         """

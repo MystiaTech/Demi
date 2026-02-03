@@ -31,6 +31,7 @@ class DemiConfig:
     lm: Dict[str, Any]
     conductor: Dict[str, Any]
     dashboard: Dict[str, Any]
+    mobile: Dict[str, Any]
 
     @classmethod
     def load(cls, config_path: str = "src/core/defaults.yaml") -> "DemiConfig":
@@ -109,12 +110,29 @@ class DemiConfig:
                     )
                 ),
             },
+            "mobile": {
+                **defaults.get("mobile", {}),
+                "enabled": _env_bool(
+                    "DEMI_MOBILE_ENABLED",
+                    defaults.get("mobile", {}).get("enabled", True),
+                ),
+                "host": _env_str(
+                    "DEMI_MOBILE_HOST",
+                    defaults.get("mobile", {}).get("host", "0.0.0.0"),
+                ),
+                "port": int(
+                    os.getenv(
+                        "DEMI_MOBILE_PORT",
+                        defaults.get("mobile", {}).get("port", 8081),
+                    )
+                ),
+            },
         }
         return cls(**config)
 
     def update(self, section: str, key: str, value: Any):
         """Update a specific configuration value at runtime"""
-        valid_sections = ["system", "emotional_system", "platforms", "lm", "conductor", "dashboard"]
+        valid_sections = ["system", "emotional_system", "platforms", "lm", "conductor", "dashboard", "mobile"]
         if section not in valid_sections:
             raise ValueError(f"Invalid configuration section: {section}")
 
