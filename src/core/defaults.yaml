@@ -104,13 +104,26 @@ voice:
   enabled: false
   tts:
     provider: "pyttsx3"
+    backend: "auto"  # "piper", "pyttsx3", or "auto" (tries piper first, then pyttsx3)
     engine: "espeak"
     rate: 150
     volume: 0.9
+    # Piper-specific settings
+    piper_voice: "en_US-lessac-medium"
+    piper_use_gpu: true
+    piper_speaker_id: null  # For multi-speaker models
+    piper_voices_dir: "~/.demi/voices/piper"
   stt:
     provider: "whisper"
     model_size: "base"
     language: "en"
+    # Faster-whisper settings (RTX 3060 optimized)
+    use_faster_whisper: true  # Use faster-whisper instead of openai-whisper
+    compute_type: "int8"  # int8, int8_float16, float16, float32 (int8 = 50% VRAM savings)
+    device: "cuda"  # "cuda", "cpu", or "auto"
+    vad_filter: true  # Voice Activity Detection filter
+    word_timestamps: false  # Enable for word-level timestamps
+    beam_size: 5  # 1-10 (higher = more accurate, slower)
 
 autonomy:
   rambles:

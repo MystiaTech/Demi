@@ -1,10 +1,14 @@
 """
-Text-to-Speech Engine for Demi using pyttsx3.
+Text-to-Speech Engine for Demi supporting multiple backends.
 
 Provides cross-platform TTS with emotional modulation, voice selection,
 and audio file generation for Discord voice playback.
 
-Target latency: <2 seconds for typical responses (<100 words).
+Backends:
+- piper: High-quality neural TTS (recommended, requires voice models)
+- pyttsx3: System TTS (fallback, works out of the box)
+
+Target latency: <500ms for Piper with GPU, <2s for pyttsx3.
 """
 
 import asyncio
@@ -17,11 +21,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
-import pyttsx3
-
 from src.core.logger import get_logger
 from src.emotion.models import EmotionalState
 from src.voice.emotion_voice import EmotionVoiceMapper, VoiceParameters
+
+# Try to import Piper TTS
+try:
+    from src.voice.piper_tts import PiperTTS, PiperTTSConfig, PIPER_AVAILABLE
+except ImportError:
+    PIPER_AVAILABLE = False
+
+# Try to import pyttsx3
+try:
+    import pyttsx3
+    PYTTSX3_AVAILABLE = True
+except ImportError:
+    PYTTSX3_AVAILABLE = False
 
 
 @dataclass
@@ -29,59 +44,73 @@ class TTSConfig:
     """Configuration for TTS engine.
 
     Attributes:
+        backend: TTS backend ("piper", "pyttsx3", "auto")
         voice_id: Voice identifier (None = system default)
-        rate: Words per minute (default 150)
+        rate: Words per minute or speed multiplier (default 150/1.0)
         volume: Audio level 0.0-1.0 (default 1.0)
         output_format: Audio format ("wav", "mp3")
         cache_enabled: Whether to cache audio files
         cache_dir: Directory for cached audio files
+        piper_voice: Piper voice ID (e.g., "en_US-lessac-medium")
+        piper_use_gpu: Use GPU acceleration for Piper
+        piper_speaker_id: Speaker ID for multi-speaker models
     """
 
+    backend: str = "auto"  # "piper", "pyttsx3", "auto"
     voice_id: Optional[str] = None
-    rate: int = 150
+    rate: Union[int, float] = 150  # int for pyttsx3, float for piper
     volume: float = 1.0
     output_format: str = "wav"
     cache_enabled: bool = True
     cache_dir: str = "~/.demi/tts_cache"
+    piper_voice: str = "en_US-lessac-medium"
+    piper_use_gpu: bool = True
+    piper_speaker_id: Optional[int] = None
 
 
 class TextToSpeech:
-    """Text-to-Speech engine using pyttsx3 backend.
+    """Text-to-Speech engine supporting multiple backends.
 
     Converts text responses to spoken audio with emotional modulation
     based on Demi's current emotional state. Supports both immediate
     playback and file generation for Discord voice channels.
 
+    Backends:
+    - Piper: High-quality neural TTS (recommended, requires model download)
+    - pyttsx3: System TTS (fallback, works out of the box)
+
     Features:
-    - Cross-platform TTS (Windows: SAPI5, macOS: NSSpeechSynthesizer, Linux: espeak)
+    - Auto-detection of best available backend
     - Emotional voice modulation (rate, volume, pitch)
-    - Voice selection with female voice preference
+    - Voice selection with female voice preference (pyttsx3)
+    - GPU acceleration support (Piper)
     - Audio caching for reduced latency
     - Async support for non-blocking operation
     - Text cleaning for optimal TTS output
     """
 
-    def __init__(self, config: Optional[TTSConfig] = None):
+    def __init__(self, config: Optional[TTSConfig] = None, backend: Optional[str] = None):
         """Initialize the TTS engine.
 
         Args:
             config: TTS configuration (uses defaults if None)
+            backend: Override backend ("piper", "pyttsx3", "auto")
         """
         self.config = config or TTSConfig()
         self.logger = get_logger()
         self.emotion_mapper = EmotionVoiceMapper()
 
-        # Initialize pyttsx3 engine
-        try:
-            self.engine = pyttsx3.init()
-            self._initialize_voice_properties()
-            self.logger.info("TTS engine initialized successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize TTS engine: {e}")
-            self.engine = None
+        # Determine backend
+        self.backend_name = backend or self.config.backend
+        self.piper_engine: Optional[PiperTTS] = None
+        self.pyttsx3_engine = None
+        self._actual_backend: Optional[str] = None
 
-        # Setup cache directory
-        if self.config.cache_enabled:
+        # Initialize selected backend
+        self._initialize_backend()
+
+        # Setup cache directory (for pyttsx3, Piper handles its own)
+        if self.config.cache_enabled and self._actual_backend == "pyttsx3":
             self.cache_dir = Path(self.config.cache_dir).expanduser()
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             self.logger.debug(f"TTS cache directory: {self.cache_dir}")
@@ -93,7 +122,108 @@ class TextToSpeech:
             "cache_hits": 0,
             "cache_misses": 0,
             "preferred_voice": self.config.voice_id,
+            "backend": self._actual_backend,
         }
+
+    def _initialize_backend(self):
+        """Initialize the TTS backend based on configuration."""
+        # Determine which backend to use
+        if self.backend_name == "auto":
+            # Try Piper first, fall back to pyttsx3
+            if PIPER_AVAILABLE:
+                self.logger.info("Auto-detecting TTS backend: trying Piper first...")
+                if self._try_init_piper():
+                    self._actual_backend = "piper"
+                    return
+            if PYTTSX3_AVAILABLE:
+                self.logger.info("Falling back to pyttsx3 backend")
+                if self._try_init_pyttsx3():
+                    self._actual_backend = "pyttsx3"
+                    return
+        elif self.backend_name == "piper":
+            if not PIPER_AVAILABLE:
+                raise RuntimeError("Piper backend requested but piper-tts not installed")
+            if self._try_init_piper():
+                self._actual_backend = "piper"
+                return
+            raise RuntimeError("Failed to initialize Piper backend")
+        elif self.backend_name == "pyttsx3":
+            if not PYTTSX3_AVAILABLE:
+                raise RuntimeError("pyttsx3 backend requested but pyttsx3 not installed")
+            if self._try_init_pyttsx3():
+                self._actual_backend = "pyttsx3"
+                return
+            raise RuntimeError("Failed to initialize pyttsx3 backend")
+        
+        # No backend available
+        self.logger.error("No TTS backend available")
+        self._actual_backend = None
+
+    def _try_init_piper(self) -> bool:
+        """Try to initialize Piper TTS backend.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            piper_config = PiperTTSConfig(
+                voice_id=self.config.piper_voice,
+                rate=1.0 if isinstance(self.config.rate, int) else self.config.rate,
+                volume=self.config.volume,
+                use_gpu=self.config.piper_use_gpu,
+                cache_enabled=self.config.cache_enabled,
+                cache_dir=f"{self.config.cache_dir}/piper",
+                speaker_id=self.config.piper_speaker_id,
+            )
+            self.piper_engine = PiperTTS(piper_config)
+            
+            # Check if any voice is loaded
+            if self.piper_engine.voice is None:
+                self.logger.warning("Piper initialized but no voices available")
+                self.logger.info("Run: ./scripts/download_piper_voices.sh en_US-lessac-medium")
+                # Keep the engine for later voice loading, but mark as needing setup
+            
+            self.logger.info("Piper TTS backend initialized")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize Piper: {e}")
+            self.piper_engine = None
+            return False
+
+    def _try_init_pyttsx3(self) -> bool:
+        """Try to initialize pyttsx3 TTS backend.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.pyttsx3_engine = pyttsx3.init()
+            self._initialize_pyttsx3_properties()
+            self.logger.info("pyttsx3 TTS backend initialized")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize pyttsx3: {e}")
+            self.pyttsx3_engine = None
+            return False
+
+    def _initialize_pyttsx3_properties(self):
+        """Initialize pyttsx3 voice properties from configuration."""
+        if self.pyttsx3_engine is None:
+            return
+
+        # Set rate (words per minute)
+        rate = self.config.rate if isinstance(self.config.rate, int) else 150
+        self.pyttsx3_engine.setProperty("rate", rate)
+
+        # Set volume
+        self.pyttsx3_engine.setProperty("volume", self.config.volume)
+
+        # Set voice if specified
+        if self.config.voice_id:
+            self.set_voice(self.config.voice_id)
+        else:
+            # Try to select a female voice by default
+            self._select_female_voice()
 
     def _initialize_voice_properties(self):
         """Initialize voice properties from configuration."""
@@ -119,10 +249,10 @@ class TextToSpeech:
         Returns:
             True if a female voice was selected, False otherwise
         """
-        if self.engine is None:
+        if self.pyttsx3_engine is None:
             return False
 
-        voices = self.engine.getProperty("voices")
+        voices = self.pyttsx3_engine.getProperty("voices")
 
         # Look for female voices (common patterns)
         female_patterns = ["female", "woman", "girl", "femme", "zira", "hazel", "samantha"]
@@ -135,7 +265,7 @@ class TextToSpeech:
             for pattern in female_patterns:
                 if pattern in voice_name or pattern in voice_id:
                     try:
-                        self.engine.setProperty("voice", voice.id)
+                        self.pyttsx3_engine.setProperty("voice", voice.id)
                         self._stats["preferred_voice"] = voice.id
                         self.logger.info(f"Selected female voice: {voice.name}")
                         return True
@@ -145,29 +275,37 @@ class TextToSpeech:
         self.logger.info("No female voice found, using system default")
         return False
 
+    def get_backend(self) -> Optional[str]:
+        """Get the currently active backend.
+        
+        Returns:
+            Backend name ("piper", "pyttsx3") or None if not initialized
+        """
+        return self._actual_backend
+
     def list_voices(self) -> list[dict]:
-        """List available system voices.
+        """List available voices for the current backend.
 
         Returns:
             List of voice dictionaries with id, name, gender, and language
         """
-        if self.engine is None:
+        if self._actual_backend == "piper" and self.piper_engine:
+            return self.piper_engine.list_voices()
+        elif self._actual_backend == "pyttsx3" and self.pyttsx3_engine:
+            voices = self.pyttsx3_engine.getProperty("voices")
+            voice_list = []
+            for voice in voices:
+                voice_info = {
+                    "id": voice.id,
+                    "name": voice.name,
+                    "languages": getattr(voice, "languages", ["unknown"]),
+                    "gender": getattr(voice, "gender", "unknown"),
+                }
+                voice_list.append(voice_info)
+            return voice_list
+        else:
             self.logger.error("TTS engine not initialized")
             return []
-
-        voices = self.engine.getProperty("voices")
-        voice_list = []
-
-        for voice in voices:
-            voice_info = {
-                "id": voice.id,
-                "name": voice.name,
-                "languages": getattr(voice, "languages", ["unknown"]),
-                "gender": getattr(voice, "gender", "unknown"),
-            }
-            voice_list.append(voice_info)
-
-        return voice_list
 
     def set_voice(self, voice_id: str) -> bool:
         """Set TTS voice by ID.
@@ -178,39 +316,65 @@ class TextToSpeech:
         Returns:
             True if successful, False otherwise
         """
-        if self.engine is None:
-            return False
+        if self._actual_backend == "piper" and self.piper_engine:
+            success = self.piper_engine.load_voice(voice_id)
+            if success:
+                self.config.piper_voice = voice_id
+                self._stats["preferred_voice"] = voice_id
+            return success
+        elif self._actual_backend == "pyttsx3" and self.pyttsx3_engine:
+            try:
+                self.pyttsx3_engine.setProperty("voice", voice_id)
+                self.config.voice_id = voice_id
+                self._stats["preferred_voice"] = voice_id
+                self.logger.info(f"Voice set to: {voice_id}")
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to set voice {voice_id}: {e}")
+                return False
+        return False
 
-        try:
-            self.engine.setProperty("voice", voice_id)
-            self.config.voice_id = voice_id
-            self._stats["preferred_voice"] = voice_id
-            self.logger.info(f"Voice set to: {voice_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to set voice {voice_id}: {e}")
-            return False
-
-    def set_rate(self, rate: int) -> bool:
-        """Set speaking rate (words per minute).
+    def set_speaker_id(self, speaker_id: int) -> bool:
+        """Set speaker ID for multi-speaker models (Piper only).
 
         Args:
-            rate: Speaking rate in WPM (100-300)
+            speaker_id: Speaker identifier
 
         Returns:
             True if successful, False otherwise
         """
-        if self.engine is None:
+        if self._actual_backend == "piper" and self.piper_engine:
+            return self.piper_engine.set_speaker_id(speaker_id)
+        else:
+            self.logger.warning("Speaker ID setting only available with Piper backend")
             return False
 
-        try:
-            clamped_rate = max(100, min(300, rate))
-            self.engine.setProperty("rate", clamped_rate)
-            self.config.rate = clamped_rate
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to set rate: {e}")
-            return False
+    def set_rate(self, rate: Union[int, float]) -> bool:
+        """Set speaking rate.
+
+        Args:
+            rate: Speaking rate (WPM for pyttsx3, multiplier for Piper)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if self._actual_backend == "piper" and self.piper_engine:
+            rate_float = float(rate) / 150.0 if isinstance(rate, int) else rate
+            success = self.piper_engine.set_rate(rate_float)
+            if success:
+                self.config.rate = rate_float
+            return success
+        elif self._actual_backend == "pyttsx3" and self.pyttsx3_engine:
+            try:
+                rate_int = int(rate) if isinstance(rate, (int, float)) else 150
+                clamped_rate = max(100, min(300, rate_int))
+                self.pyttsx3_engine.setProperty("rate", clamped_rate)
+                self.config.rate = clamped_rate
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to set rate: {e}")
+                return False
+        return False
 
     def set_volume(self, volume: float) -> bool:
         """Set volume level.
@@ -221,17 +385,21 @@ class TextToSpeech:
         Returns:
             True if successful, False otherwise
         """
-        if self.engine is None:
-            return False
-
-        try:
-            clamped_volume = max(0.0, min(1.0, volume))
-            self.engine.setProperty("volume", clamped_volume)
-            self.config.volume = clamped_volume
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to set volume: {e}")
-            return False
+        if self._actual_backend == "piper" and self.piper_engine:
+            success = self.piper_engine.set_volume(volume)
+            if success:
+                self.config.volume = volume
+            return success
+        elif self._actual_backend == "pyttsx3" and self.pyttsx3_engine:
+            try:
+                clamped_volume = max(0.0, min(1.0, volume))
+                self.pyttsx3_engine.setProperty("volume", clamped_volume)
+                self.config.volume = clamped_volume
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to set volume: {e}")
+                return False
+        return False
 
     async def speak(
         self,
@@ -251,7 +419,7 @@ class TextToSpeech:
         Returns:
             Path to audio file if saved, None if played immediately
         """
-        if self.engine is None:
+        if self._actual_backend is None:
             self.logger.error("TTS engine not initialized")
             return None
 
@@ -265,7 +433,7 @@ class TextToSpeech:
         clean_text = self._clean_text_for_tts(text)
 
         # Apply emotion modulation if provided
-        if emotion_state:
+        if emotion_state and self._actual_backend == "pyttsx3":
             voice_params = self.emotion_mapper.map_emotion_to_voice(emotion_state)
             await self._apply_voice_parameters(voice_params)
             # Add emotional emphasis to text
@@ -274,6 +442,54 @@ class TextToSpeech:
             )
             clean_text = self.emotion_mapper.add_goddess_inflections(clean_text)
 
+        # Delegate to appropriate backend
+        try:
+            if self._actual_backend == "piper" and self.piper_engine:
+                result = await self.piper_engine.speak(
+                    clean_text, 
+                    emotion=emotion_state,
+                    save_path=save_path,
+                    play_immediately=play_immediately
+                )
+            elif self._actual_backend == "pyttsx3" and self.pyttsx3_engine:
+                result = await self._speak_pyttsx3(
+                    clean_text, emotion_state, save_path, play_immediately
+                )
+            else:
+                self.logger.error("No TTS backend available")
+                return None
+
+            # Update statistics
+            latency_ms = (time.time() - start_time) * 1000
+            self._stats["total_utterances"] += 1
+            self._stats["total_latency_ms"] += latency_ms
+
+            self.logger.debug(f"TTS synthesis completed in {latency_ms:.1f}ms")
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"TTS synthesis failed: {e}")
+            return None
+
+    async def _speak_pyttsx3(
+        self,
+        text: str,
+        emotion_state: Optional[EmotionalState],
+        save_path: Optional[str],
+        play_immediately: bool,
+    ) -> Optional[str]:
+        """Internal pyttsx3 speak implementation.
+        
+        Args:
+            text: Cleaned text to speak
+            emotion_state: Optional emotional state
+            save_path: Optional path to save audio file
+            play_immediately: If True, play immediately
+            
+        Returns:
+            Path to audio file or None
+        """
         # Determine output path
         if save_path:
             output_path = save_path
@@ -285,7 +501,7 @@ class TextToSpeech:
         # Check cache if enabled and no custom save path
         cache_hit = False
         if self.config.cache_enabled and not save_path and output_path:
-            cached_path = self._get_cached_audio(clean_text, emotion_state)
+            cached_path = self._get_cached_audio(text, emotion_state)
             if cached_path:
                 output_path = cached_path
                 cache_hit = True
@@ -293,31 +509,19 @@ class TextToSpeech:
             else:
                 self._stats["cache_misses"] += 1
 
-        try:
-            if output_path and not cache_hit:
-                # Synthesize to file
-                await self._synthesize_to_file(clean_text, output_path)
+        if output_path and not cache_hit:
+            # Synthesize to file
+            await self._synthesize_to_file(text, output_path)
 
-                # Cache the result if caching is enabled
-                if self.config.cache_enabled and not save_path:
-                    self._cache_audio(clean_text, emotion_state, output_path)
+            # Cache the result if caching is enabled
+            if self.config.cache_enabled and not save_path:
+                self._cache_audio(text, emotion_state, output_path)
 
-            elif play_immediately:
-                # Play immediately (blocking)
-                await self._synthesize_and_play(clean_text)
+        elif play_immediately:
+            # Play immediately (blocking)
+            await self._synthesize_and_play(text)
 
-            # Update statistics
-            latency_ms = (time.time() - start_time) * 1000
-            self._stats["total_utterances"] += 1
-            self._stats["total_latency_ms"] += latency_ms
-
-            self.logger.debug(f"TTS synthesis completed in {latency_ms:.1f}ms")
-
-            return output_path if output_path else None
-
-        except Exception as e:
-            self.logger.error(f"TTS synthesis failed: {e}")
-            return None
+        return output_path if output_path else None
 
     async def speak_async(
         self,
@@ -393,6 +597,21 @@ class TextToSpeech:
                 clean_text, emotion_state=emotion_state, save_path=temp_path
             )
 
+    async def load_piper_voice(self, voice_id: str) -> bool:
+        """Load a Piper voice model (Piper backend only).
+        
+        Args:
+            voice_id: Piper voice identifier (e.g., "en_US-lessac-medium")
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if self._actual_backend == "piper" and self.piper_engine:
+            return self.piper_engine.load_voice(voice_id)
+        else:
+            self.logger.warning("load_piper_voice only available with Piper backend")
+            return False
+
     def _clean_text_for_tts(self, text: str) -> str:
         """Clean text for better TTS output.
 
@@ -451,14 +670,14 @@ class TextToSpeech:
         Args:
             params: VoiceParameters to apply
         """
-        if self.engine is None:
+        if self.pyttsx3_engine is None:
             return
 
         # Apply rate
-        self.engine.setProperty("rate", params.rate)
+        self.pyttsx3_engine.setProperty("rate", params.rate)
 
         # Apply volume
-        self.engine.setProperty("volume", params.volume)
+        self.pyttsx3_engine.setProperty("volume", params.volume)
 
         # Note: pyttsx3 doesn't support direct pitch control
         # Pitch modulation would need SSML or audio post-processing
@@ -467,7 +686,7 @@ class TextToSpeech:
             self.logger.debug(f"Pitch modulation requested: {params.pitch} (not directly supported)")
 
     async def _synthesize_to_file(self, text: str, output_path: str):
-        """Synthesize text to audio file.
+        """Synthesize text to audio file using pyttsx3.
 
         Runs in thread pool since pyttsx3 is blocking.
 
@@ -475,31 +694,31 @@ class TextToSpeech:
             text: Text to synthesize
             output_path: Path for output audio file
         """
-        if self.engine is None:
+        if self.pyttsx3_engine is None:
             raise RuntimeError("TTS engine not initialized")
 
         def _synthesize():
-            self.engine.save_to_file(text, output_path)
-            self.engine.runAndWait()
+            self.pyttsx3_engine.save_to_file(text, output_path)
+            self.pyttsx3_engine.runAndWait()
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _synthesize)
 
     async def _synthesize_and_play(self, text: str):
-        """Synthesize and immediately play text.
+        """Synthesize and immediately play text using pyttsx3.
 
         Runs in thread pool since pyttsx3 is blocking.
 
         Args:
             text: Text to synthesize and play
         """
-        if self.engine is None:
+        if self.pyttsx3_engine is None:
             raise RuntimeError("TTS engine not initialized")
 
         def _speak():
-            self.engine.say(text)
-            self.engine.runAndWait()
+            self.pyttsx3_engine.say(text)
+            self.pyttsx3_engine.runAndWait()
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
@@ -611,7 +830,14 @@ class TextToSpeech:
             - avg_latency_ms: Average synthesis latency in milliseconds
             - cache_hit_rate: Cache hit rate (0.0-1.0)
             - preferred_voice: Currently selected voice ID
+            - backend: Currently active backend
         """
+        if self._actual_backend == "piper" and self.piper_engine:
+            # Get stats from Piper engine and merge with our stats
+            stats = self.piper_engine.get_stats()
+            stats["backend"] = "piper"
+            return stats
+        
         stats = self._stats.copy()
 
         # Calculate average latency
@@ -635,6 +861,9 @@ class TextToSpeech:
         Returns:
             Number of files removed
         """
+        if self._actual_backend == "piper" and self.piper_engine:
+            return self.piper_engine.clear_cache()
+        
         if not self.config.cache_enabled:
             return 0
 
