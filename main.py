@@ -17,6 +17,10 @@ import sys
 import time
 from pathlib import Path
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.core.logger import get_logger
 from src.core.config import DemiConfig
 from src.conductor import get_conductor
