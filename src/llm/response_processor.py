@@ -16,6 +16,12 @@ from src.emotion.interactions import InteractionHandler, InteractionType
 from src.emotion.persistence import EmotionPersistence
 from src.autonomy.refusals import RefusalSystem, RefusalAnalysis, RefusalCategory
 
+try:
+    from src.monitoring.metrics import get_conversation_metrics
+    HAS_CONVERSATION_METRICS = True
+except ImportError:
+    HAS_CONVERSATION_METRICS = False
+
 
 @dataclass
 class ProcessedResponse:
@@ -153,14 +159,29 @@ class ResponseProcessor:
             emotional_state_after=emotional_state_after,
         )
 
-        # Step 7: Log at INFO level
+        # Step 7: Record conversation metrics if available
+        if HAS_CONVERSATION_METRICS:
+            try:
+                conv_metrics = get_conversation_metrics()
+                # Estimate user message length (not always available, use 0 as placeholder)
+                # This gets updated by platform integrations
+                conv_metrics.record_conversation(
+                    user_message_length=0,  # Updated by platform integrations
+                    bot_response_length=len(cleaned_text),
+                    conversation_turn=1,  # Simplified, should track per user
+                    sentiment_score=0.5  # Simplified, could calculate from response
+                )
+            except Exception as e:
+                self.logger.debug(f"Failed to record conversation metrics: {e}")
+
+        # Step 8: Log at INFO level
         self.logger.info(
             f"Processed response ({tokens_generated} tokens) in {inference_time_sec:.2f}sec. "
             f"Emotion delta: loneliness {emotional_state_before.loneliness:.1f} → "
             f"{emotional_state_after.loneliness:.1f}"
         )
 
-        # Step 8: Return
+        # Step 9: Return
         return processed
 
     def _handle_refusal(
