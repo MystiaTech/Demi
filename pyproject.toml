@@ -39,6 +39,7 @@ dev = [
 
 [project.entry-points."demi.platforms"]
 discord = "src.integrations.discord_bot:DiscordBot"
+telegram = "src.integrations.telegram_bot:TelegramBot"
 
 [tool.setuptools]
 packages = ["src"]

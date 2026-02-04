@@ -293,6 +293,8 @@ class AutonomyCoordinator:
                 return self._execute_discord_action(action_type, context)
             elif platform == "android":
                 return self._execute_android_action(action_type, context)
+            elif platform == "telegram":
+                return self._execute_telegram_action(action_type, context)
             else:
                 self.logger.warning(f"Unknown platform: {platform}")
                 return False
@@ -343,6 +345,27 @@ class AutonomyCoordinator:
 
         except Exception as e:
             self.logger.error(f"Failed to execute Android action: {e}")
+            return False
+
+    def _execute_telegram_action(
+        self, action_type: str, context: Dict[str, Any]
+    ) -> bool:
+        """Execute autonomous action on Telegram platform."""
+        try:
+            if hasattr(self.conductor, "send_telegram_message"):
+                content = context.get("content", "")
+                chat_id = context.get("chat_id")
+
+                if chat_id:
+                    result = self.conductor.send_telegram_message(content, chat_id)
+                    if result:
+                        self._log_executed_action("telegram", action_type, content)
+                        return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to execute Telegram action: {e}")
             return False
 
     def _should_execute_action(self) -> bool:

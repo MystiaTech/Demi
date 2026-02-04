@@ -52,7 +52,15 @@ platforms:
     reconnect_delay: 5
     status_update_interval: 300
     message_cache_size: 1000
-  
+
+  telegram:
+    enabled: true
+    auto_reconnect: true
+    reconnect_max_attempts: 5
+    parse_mode: "MarkdownV2"
+    rate_limit_messages_per_second: 20
+    polling_timeout: 30
+
   android:
     enabled: false
     notification_frequency: 3

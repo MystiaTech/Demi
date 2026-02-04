@@ -7,6 +7,9 @@
 # Discord Integration (Phase 05)
 discord.py>=2.6.0
 
+# Telegram Integration
+python-telegram-bot>=20.8
+
 # Discord Voice Integration (Phase 08-03)
 # Note: Requires FFmpeg and libopus system packages
 # Ubuntu/Debian: sudo apt-get install ffmpeg libopus0

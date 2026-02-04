@@ -1029,6 +1029,27 @@ class Conductor:
             self._logger.error(f"Failed to send Android WebSocket message: {e}")
             return False
 
+    def send_telegram_message(self, content: str, chat_id: int) -> bool:
+        """
+        Send message through Telegram platform.
+
+        Args:
+            content: Message content to send
+            chat_id: Telegram chat ID
+
+        Returns:
+            True if message sent successfully
+        """
+        try:
+            # Get Telegram plugin from plugin manager
+            telegram_plugin = self._plugin_manager.get_loaded_plugin("telegram")
+            if telegram_plugin and hasattr(telegram_plugin, "send_message"):
+                return telegram_plugin.send_message(content, chat_id)
+            return False
+        except Exception as e:
+            self._logger.error(f"Failed to send Telegram message: {e}")
+            return False
+
 
 # Global conductor instance
 _conductor_instance: Optional[Conductor] = None
