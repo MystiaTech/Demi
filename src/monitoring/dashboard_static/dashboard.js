@@ -53,22 +53,8 @@ class DemiDashboard {
             this.fetchVoiceMetrics();
         }, 5000);
 
-        // Simulate emotional fluctuations to show system is "thinking"
-        this._emotionSimulationInterval = setInterval(() => {
-            if (this.lastEmotions) {
-                const simulated = { ...this.lastEmotions };
-
-                // Add small random fluctuations to each emotion
-                this.emotions.forEach(emotion => {
-                    const currentValue = simulated[emotion] || 0.5;
-                    const change = (Math.random() - 0.5) * 0.05; // ±2.5% change
-                    simulated[emotion] = Math.max(0.1, Math.min(0.9, currentValue + change));
-                });
-
-                this.lastEmotions = simulated;
-                this.updateEmotions(simulated);
-            }
-        }, 3000);
+        // Note: Real emotion data comes from WebSocket updates
+        // No simulation needed - shows actual Demi emotional state
     }
 
     stopMetricsUpdates() {

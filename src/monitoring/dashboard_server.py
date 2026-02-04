@@ -763,11 +763,18 @@ class DashboardServer:
             for ws in self.websocket_connections:
                 try:
                     await ws.send_json(message)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to send to websocket: {e}")
                     disconnected.add(ws)
 
             # Clean up disconnected clients
-            self.websocket_connections -= disconnected
+            if disconnected:
+                self.websocket_connections -= disconnected
+                logger.debug(f"Cleaned up {len(disconnected)} disconnected WebSocket clients")
+
+            # Log successful broadcast
+            if self.websocket_connections:
+                logger.debug(f"Broadcasted update to {len(self.websocket_connections)} clients")
 
         except Exception as e:
             logger.error("Broadcast update error", error=str(e))
