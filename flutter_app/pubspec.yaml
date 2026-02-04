@@ -51,11 +51,12 @@ flutter:
     - assets/images/
     - assets/animations/
 
-  fonts:
-    - family: Roboto
-      fonts:
-        - asset: assets/fonts/Roboto-Regular.ttf
-        - asset: assets/fonts/Roboto-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/Roboto-Italic.ttf
-          style: italic
+  # Custom fonts (uncomment if font files are available)
+  # fonts:
+  #   - family: Roboto
+  #     fonts:
+  #       - asset: assets/fonts/Roboto-Regular.ttf
+  #       - asset: assets/fonts/Roboto-Bold.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/Roboto-Italic.ttf
+  #         style: italic

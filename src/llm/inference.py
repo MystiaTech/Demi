@@ -623,6 +623,8 @@ class UnifiedLLMInference:
         self._active_provider = None
         self._last_health_check = 0
         self._health_check_interval = 60  # seconds
+        self._tokenizer = None
+        self._tokenizer_attempted = False
 
         self.logger.info(
             f"Unified LLM inference initialized. "
@@ -711,3 +713,40 @@ class UnifiedLLMInference:
             "Ollama provider failed and fallback is disabled. "
             "Please ensure Ollama is running or enable LMStudio fallback."
         )
+
+    def _count_tokens(self, text: str) -> int:
+        """
+        Count tokens in text (delegates to active provider or uses fallback estimation).
+
+        Args:
+            text: Text to count tokens for
+
+        Returns:
+            Estimated token count
+        """
+        # Try to use transformers tokenizer
+        if not self._tokenizer_attempted:
+            try:
+                from transformers import AutoTokenizer
+
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    "meta-llama/Llama-2-7b-hf"
+                )
+                self._tokenizer_attempted = True
+                self.logger.debug("Loaded transformers tokenizer for token counting")
+            except Exception as e:
+                self._tokenizer_attempted = True
+                self.logger.debug(
+                    f"Tokenizer unavailable, using fallback estimation: {type(e).__name__}"
+                )
+
+        # Use tokenizer if available
+        if self._tokenizer:
+            try:
+                tokens = self._tokenizer.encode(text, add_special_tokens=False)
+                return len(tokens)
+            except Exception as e:
+                self.logger.warning(f"Tokenizer encoding failed: {e}, using fallback")
+
+        # Fallback: rough estimation (1 token ≈ 4 characters)
+        return len(text) // 4
