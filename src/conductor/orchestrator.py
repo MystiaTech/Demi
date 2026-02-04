@@ -512,16 +512,18 @@ class Conductor:
             # Load user's emotional state
             emotion_state = await self.emotion_persistence.load_state(user_id)
 
+            # Get modulation parameters based on emotional state
+            modulation = self.personality_modulator.compute_modulation(emotion_state)
+
             # Build conversation history with current message
-            messages = [{"role": "user", "content": content}]
+            conversation_history = [{"role": "user", "content": content}]
 
-            # Add system prompt with emotion state
-            system_prompt = self.prompt_builder.build(
-                emotional_state=emotion_state, codebase_reader=self.codebase_reader
+            # Build complete message list with system prompt and emotional modulation
+            messages = self.prompt_builder.build(
+                emotional_state=emotion_state,
+                modulation=modulation,
+                conversation_history=conversation_history,
             )
-
-            # Prepend system prompt to messages
-            messages.insert(0, {"role": "system", "content": system_prompt})
 
             # Call inference with emotion state
             response_content = await self.llm.chat(

@@ -8,7 +8,7 @@ Manages emotional triggers, background tasks, and refusal system integration.
 import asyncio
 import time
 from typing import Dict, Any, Optional, List, Union
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 from src.core.logger import DemiLogger
@@ -43,7 +43,7 @@ class AutonomousAction:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.now(UTC)
+            self.created_at = datetime.now(timezone.utc)
 
 
 class AutonomyCoordinator:

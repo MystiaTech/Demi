@@ -4,7 +4,7 @@ Rambles are spontaneous messages Demi posts to Discord based on emotional trigge
 """
 
 from dataclasses import dataclass, asdict, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Dict, Optional
 import json
 import sqlite3
@@ -19,7 +19,7 @@ class Ramble:
     content: str
     emotion_state: Dict[str, float]  # Emotional state when ramble generated
     trigger: str  # Enum: "loneliness", "excitement", "frustration", "spontaneous"
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         """Serialize ramble to dict for database storage."""

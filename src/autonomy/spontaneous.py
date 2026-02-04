@@ -8,7 +8,7 @@ state, recent conversation history, and timing considerations.
 import asyncio
 import random
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from enum import Enum
 
@@ -85,7 +85,7 @@ class TimingAnalyzer:
             Tuple of (is_appropriate, reason)
         """
         if current_time is None:
-            current_time = datetime.now(UTC)
+            current_time = datetime.now(timezone.utc)
 
         current_hour = current_time.hour
 
@@ -257,7 +257,7 @@ Generate only the message content, no additional text.
 
         if context.last_interaction_time:
             hours_ago = (
-                datetime.now(UTC) - context.last_interaction_time
+                datetime.now(timezone.utc) - context.last_interaction_time
             ).total_seconds() / 3600
             context_parts.append(f"Last interaction: {hours_ago:.1f} hours ago")
 
@@ -386,7 +386,7 @@ class SpontaneousInitiator:
         """
         # Check cooldown (minimum 2 hours between spontaneous contacts)
         if self.last_initiation:
-            time_since_last = datetime.now(UTC) - self.last_initiation
+            time_since_last = datetime.now(timezone.utc) - self.last_initiation
             if time_since_last.total_seconds() < 7200:  # 2 hours
                 return None
 
@@ -549,7 +549,7 @@ class SpontaneousInitiator:
         # If there are recent topics but no recent interaction
         if context.recent_topics and context.last_interaction_time:
             hours_since = (
-                datetime.now(UTC) - context.last_interaction_time
+                datetime.now(timezone.utc) - context.last_interaction_time
             ).total_seconds() / 3600
 
             if 2 <= hours_since <= 8:  # Sweet spot for follow-up
@@ -575,7 +575,7 @@ class SpontaneousInitiator:
         # Find most recently active platform
         most_recent_platform = max(
             user_activity.items(),
-            key=lambda x: x[1] if x[1] else datetime.min.replace(tzinfo=UTC),
+            key=lambda x: x[1] if x[1] else datetime.min.replace(tzinfo=timezone.utc),
         )[0]
 
         # Check if this platform supports spontaneous messages
@@ -599,7 +599,7 @@ class SpontaneousInitiator:
     def _record_initiation(self, opportunity: InitiationOpportunity, message: str):
         """Record initiation for tracking and cooldowns."""
 
-        self.last_initiation = datetime.now(UTC)
+        self.last_initiation = datetime.now(timezone.utc)
 
         record = {
             "timestamp": self.last_initiation.isoformat(),
@@ -633,7 +633,7 @@ class SpontaneousInitiator:
             }
 
         # Recent initiations (last 24 hours)
-        recent_cutoff = datetime.now(UTC) - timedelta(hours=24)
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         recent_initiations = [
             record
             for record in self.initiation_history

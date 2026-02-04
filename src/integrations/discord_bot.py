@@ -433,35 +433,27 @@ class DiscordBot(BasePlatform):
                 try:
                     # Show typing indicator (improves UX)
                     async with message.channel.typing():
-                        # Route through Conductor
-                        # Format message for LLM (simple format for now, will be enhanced in future plans)
-                        messages = [{"role": "user", "content": content}]
+                        # Route through Conductor with emotion state and personality modulation
+                        response = await self.conductor.request_inference_for_platform(
+                            platform="discord",
+                            user_id=user_id,
+                            content=content,
+                            context={"guild_id": guild_id, "channel_id": channel_id},
+                        )
 
-                        response = await self.conductor.request_inference(messages)
-
-                    # Format response as embed
+                    # Extract and send plain text response
                     try:
-                        # Handle both dict and string responses (backward compatibility)
+                        # Handle both dict and string responses
                         if isinstance(response, dict):
-                            # New format: dict with content and emotion_state
-                            embed = format_response_as_embed(
-                                response, str(message.author)
-                            )
-                            await message.reply(embed=embed, mention_author=False)
                             response_text = response.get("content", "")
                         else:
-                            # Legacy format: plain string
-                            # Wrap in dict for embed formatting
-                            response_dict = {"content": response, "emotion_state": {}}
-                            embed = format_response_as_embed(
-                                response_dict, str(message.author)
-                            )
-                            await message.reply(embed=embed, mention_author=False)
                             response_text = response
-                    except Exception as embed_error:
-                        # Fallback to plain text if embed formatting fails
+
+                        # Send as plain text message
+                        await message.reply(response_text, mention_author=False)
+                    except Exception as send_error:
                         self.logger.warning(
-                            f"Embed formatting failed, using plain text: {embed_error}",
+                            f"Failed to send response: {send_error}",
                             user_id=user_id,
                         )
                         response_text = (
@@ -469,7 +461,15 @@ class DiscordBot(BasePlatform):
                             if isinstance(response, dict)
                             else response
                         )
-                        await message.reply(response_text, mention_author=False)
+                        # Fallback: try to send as plain text
+                        try:
+                            await message.reply(response_text, mention_author=False)
+                        except Exception as fallback_error:
+                            self.logger.error(
+                                f"Failed to send fallback response: {fallback_error}",
+                                user_id=user_id,
+                            )
+                            await message.reply("Oops, something went wrong.", mention_author=False)
 
                     self.logger.info(
                         "Discord response sent",
