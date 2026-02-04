@@ -517,7 +517,7 @@ class Conductor:
                 emotion_state = EmotionalState()
 
             # Get modulation parameters based on emotional state
-            modulation = self.personality_modulator.compute_modulation(emotion_state)
+            modulation = self.personality_modulator.modulate(emotion_state)
 
             # Build conversation history with current message
             conversation_history = [{"role": "user", "content": content}]
