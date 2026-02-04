@@ -33,6 +33,18 @@ class DemiDashboard {
         this.setupEventListeners();
         this.fetchInitialData();
         this.initEmotionLegend();
+        this.startMetricsUpdates();
+    }
+
+    startMetricsUpdates() {
+        // Update specialized metrics every 5 seconds
+        setInterval(() => {
+            this.fetchLLMMetrics();
+            this.fetchPlatformMetrics();
+            this.fetchConversationMetrics();
+            this.fetchEmotionHistory();
+            this.fetchDiscordStatus();
+        }, 5000);
     }
 
     setupTheme() {
@@ -739,10 +751,239 @@ class DemiDashboard {
             this.drawEmotionRadar(this.lastEmotions);
             this.drawMemoryChart();
             this.drawResponseChart();
+            this.drawEmotionHistoryChart();
         });
 
         // Track start time for uptime
         this.startTime = Date.now();
+    }
+
+    async fetchLLMMetrics() {
+        try {
+            const response = await fetch('/api/metrics/llm');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateLLMMetrics(data);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch LLM metrics:', error);
+        }
+    }
+
+    updateLLMMetrics(data) {
+        if (!data.stats) return;
+
+        const avgResponse = document.getElementById('llm-avg-response');
+        const maxResponse = document.getElementById('llm-max-response');
+        const totalTokens = document.getElementById('llm-total-tokens');
+
+        if (avgResponse) {
+            avgResponse.textContent = `${data.stats.avg_response_time.toFixed(0)} ms`;
+        }
+        if (maxResponse) {
+            maxResponse.textContent = `${data.stats.max_response_time.toFixed(0)} ms`;
+        }
+        if (totalTokens) {
+            totalTokens.textContent = `${data.stats.total_tokens.toLocaleString()}`;
+        }
+
+        // Store for chart rendering
+        this.llmResponseTimes = data.response_times || [];
+    }
+
+    async fetchPlatformMetrics() {
+        try {
+            const response = await fetch('/api/metrics/platforms');
+            if (response.ok) {
+                const data = await response.json();
+                this.updatePlatformMetrics(data);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch platform metrics:', error);
+        }
+    }
+
+    updatePlatformMetrics(data) {
+        const container = document.getElementById('platform-metrics-display');
+        if (!container) return;
+
+        if (!data.platforms || Object.keys(data.platforms).length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-muted);">No platform metrics available</div>';
+            return;
+        }
+
+        let html = '';
+        Object.entries(data.platforms).forEach(([platform, stats]) => {
+            html += `
+                <div style="padding: 12px; background: var(--bg-color); border-radius: 8px; border-left: 4px solid ${stats.error_rate > 5 ? 'var(--warning-color)' : 'var(--success-color)'};">
+                    <div style="font-weight: 600; margin-bottom: 8px; text-transform: capitalize;">${platform}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.9rem;">
+                        <div><span style="color: var(--text-muted);">Messages:</span> <span style="color: var(--primary-color); font-weight: 600;">${stats.message_count}</span></div>
+                        <div><span style="color: var(--text-muted);">Avg Response:</span> <span style="color: var(--primary-color); font-weight: 600;">${stats.avg_response_time_ms.toFixed(0)}ms</span></div>
+                        <div><span style="color: var(--text-muted);">Errors:</span> <span style="color: ${stats.error_count > 0 ? 'var(--warning-color)' : 'var(--success-color)'}; font-weight: 600;">${stats.error_count}</span></div>
+                        <div><span style="color: var(--text-muted);">Error Rate:</span> <span style="color: ${stats.error_rate > 5 ? 'var(--warning-color)' : 'var(--success-color)'}; font-weight: 600;">${stats.error_rate.toFixed(2)}%</span></div>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    async fetchConversationMetrics() {
+        try {
+            const response = await fetch('/api/metrics/conversation');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateConversationMetrics(data);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch conversation metrics:', error);
+        }
+    }
+
+    updateConversationMetrics(data) {
+        if (!data.quality) return;
+
+        const userLength = document.getElementById('conv-user-length');
+        const responseLength = document.getElementById('conv-response-length');
+        const sentiment = document.getElementById('conv-sentiment');
+        const maxTurn = document.getElementById('conv-max-turn');
+
+        if (userLength) {
+            userLength.textContent = `${Math.round(data.quality.avg_user_message_length)} chars`;
+        }
+        if (responseLength) {
+            responseLength.textContent = `${Math.round(data.quality.avg_response_length)} chars`;
+        }
+        if (sentiment) {
+            sentiment.textContent = (data.quality.avg_sentiment * 100).toFixed(0) + '%';
+        }
+        if (maxTurn) {
+            maxTurn.textContent = `${data.quality.max_conversation_turn}`;
+        }
+    }
+
+    async fetchEmotionHistory() {
+        try {
+            const response = await fetch('/api/metrics/emotions/history?hours=1&limit=50');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateEmotionHistory(data);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch emotion history:', error);
+        }
+    }
+
+    updateEmotionHistory(data) {
+        if (!data.emotions) return;
+        this.emotionHistory = data.emotions;
+        this.drawEmotionHistoryChart();
+    }
+
+    drawEmotionHistoryChart() {
+        const canvas = document.getElementById('emotion-history-chart');
+        if (!canvas || !this.emotionHistory) return;
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 40;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Get all timestamps
+        const allTimestamps = new Set();
+        Object.values(this.emotionHistory).forEach(emotion => {
+            emotion.forEach(point => {
+                allTimestamps.add(Math.floor(point.timestamp));
+            });
+        });
+        const timestamps = Array.from(allTimestamps).sort();
+
+        if (timestamps.length < 2) return;
+
+        // Draw grid
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = height - padding - (i / 4) * (height - 2 * padding);
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(width - 10, y);
+            ctx.stroke();
+
+            // Y-axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText((i / 4).toFixed(1), padding - 5, y + 3);
+        }
+
+        // Draw lines for each emotion
+        const emotionColors = this.emotionColors;
+        Object.entries(this.emotionHistory).forEach(([emotion, points]) => {
+            if (points.length < 2) return;
+
+            ctx.strokeStyle = emotionColors[emotion];
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            points.forEach((point, index) => {
+                const x = padding + (index / (points.length - 1)) * (width - padding - 10);
+                const y = height - padding - point.value * (height - 2 * padding);
+
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+
+            ctx.stroke();
+        });
+    }
+
+    async fetchDiscordStatus() {
+        try {
+            const response = await fetch('/api/metrics/discord');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateDiscordStatus(data);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch Discord status:', error);
+        }
+    }
+
+    updateDiscordStatus(data) {
+        if (!data.bot_status) return;
+
+        const status = data.bot_status;
+        const indicator = document.getElementById('discord-status-indicator');
+        const latency = document.getElementById('discord-latency');
+        const guilds = document.getElementById('discord-guilds');
+        const users = document.getElementById('discord-users');
+
+        // Update status indicator
+        if (indicator) {
+            indicator.className = `status-indicator ${status.online ? 'online' : 'offline'}`;
+            indicator.innerHTML = `
+                <span class="status-dot ${status.online ? 'online' : 'offline'}"></span>
+                <span>${status.online ? 'Online' : 'Offline'}</span>
+            `;
+        }
+
+        // Update stats
+        if (latency) {
+            latency.textContent = status.latency_ms ? status.latency_ms.toFixed(0) : '--';
+        }
+        if (guilds) {
+            guilds.textContent = status.guild_count || '--';
+        }
+        if (users) {
+            users.textContent = status.connected_users || '--';
+        }
     }
 }
 

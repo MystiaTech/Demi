@@ -16,7 +16,16 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.core.logger import get_logger
-from src.monitoring.metrics import MetricsCollector, get_metrics_collector, MetricType
+from src.monitoring.metrics import (
+    MetricsCollector,
+    get_metrics_collector,
+    MetricType,
+    get_llm_metrics,
+    get_platform_metrics,
+    get_conversation_metrics,
+    get_emotion_metrics,
+    get_discord_metrics,
+)
 from src.monitoring.alerts import AlertManager, get_alert_manager, AlertLevel
 
 logger = get_logger()
@@ -333,6 +342,165 @@ class DashboardServer:
 
             except Exception as e:
                 logger.error("Platforms endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/llm")
+        async def get_llm_metrics_endpoint():
+            """Get LLM performance metrics."""
+            try:
+                from datetime import timedelta
+                from src.monitoring.metrics import get_llm_metrics
+
+                llm_metrics = get_llm_metrics()
+
+                # Get recent metrics
+                response_times = self.metrics_collector.get_metric(
+                    "llm_response_time_ms", timedelta(hours=1), limit=100
+                )
+                tokens = self.metrics_collector.get_metric(
+                    "llm_tokens_generated", timedelta(hours=1), limit=100
+                )
+                latencies = self.metrics_collector.get_metric(
+                    "llm_inference_latency_ms", timedelta(hours=1), limit=100
+                )
+
+                return {
+                    "response_times": [
+                        {
+                            "timestamp": m.timestamp,
+                            "value": round(m.value, 2),
+                        }
+                        for m in response_times
+                    ],
+                    "tokens_generated": [
+                        {
+                            "timestamp": m.timestamp,
+                            "value": m.value,
+                        }
+                        for m in tokens
+                    ],
+                    "latencies": [
+                        {
+                            "timestamp": m.timestamp,
+                            "value": round(m.value, 2),
+                        }
+                        for m in latencies
+                    ],
+                    "stats": {
+                        "avg_response_time": round(
+                            self.metrics_collector.aggregate(
+                                "llm_response_time_ms", "avg", timedelta(hours=1)
+                            ) or 0,
+                            2,
+                        ),
+                        "max_response_time": round(
+                            self.metrics_collector.aggregate(
+                                "llm_response_time_ms", "max", timedelta(hours=1)
+                            ) or 0,
+                            2,
+                        ),
+                        "total_tokens": int(
+                            self.metrics_collector.aggregate(
+                                "llm_tokens_generated", "sum", timedelta(hours=1)
+                            ) or 0
+                        ),
+                    },
+                }
+            except Exception as e:
+                logger.error("LLM metrics endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/platforms")
+        async def get_platforms_metrics():
+            """Get platform interaction statistics."""
+            try:
+                from datetime import timedelta
+                from src.monitoring.metrics import get_platform_metrics
+
+                platform_metrics = get_platform_metrics()
+                stats = platform_metrics.get_platform_stats(timedelta(hours=1))
+
+                return {
+                    "platforms": stats,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Platform metrics endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/conversation")
+        async def get_conversation_metrics_endpoint():
+            """Get conversation quality metrics."""
+            try:
+                from datetime import timedelta
+                from src.monitoring.metrics import get_conversation_metrics
+
+                conv_metrics = get_conversation_metrics()
+                quality = conv_metrics.get_quality_metrics(timedelta(hours=1))
+
+                # Get recent messages for context
+                recent_turns = self.metrics_collector.get_metric(
+                    "conversation_turn_number", timedelta(hours=1), limit=20
+                )
+
+                return {
+                    "quality": quality,
+                    "recent_turns": [
+                        {
+                            "timestamp": m.timestamp,
+                            "turn": int(m.value),
+                        }
+                        for m in recent_turns
+                    ],
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Conversation metrics endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/emotions/history")
+        async def get_emotions_history_endpoint(hours: int = 1, limit: int = 100):
+            """Get emotion history data.
+
+            Args:
+                hours: Hours of history to retrieve
+                limit: Maximum points per emotion
+            """
+            try:
+                from src.monitoring.metrics import get_emotion_metrics
+
+                emotion_metrics = get_emotion_metrics()
+                emotions_data = {}
+
+                for emotion in emotion_metrics.EMOTION_NAMES:
+                    history = emotion_metrics.get_emotion_history(emotion, limit)
+                    if history:
+                        emotions_data[emotion] = history
+
+                return {
+                    "emotions": emotions_data,
+                    "hours": hours,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Emotion history endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/discord")
+        async def get_discord_metrics_endpoint():
+            """Get Discord bot status metrics."""
+            try:
+                from src.monitoring.metrics import get_discord_metrics
+
+                discord_metrics = get_discord_metrics()
+                status = discord_metrics.get_bot_status()
+
+                return {
+                    "bot_status": status,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Discord metrics endpoint error", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.websocket("/ws")

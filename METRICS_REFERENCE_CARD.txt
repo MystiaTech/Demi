@@ -1,0 +1,319 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║           DEMI METRICS SYSTEM - QUICK REFERENCE CARD                ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+RECORDING METRICS
+═════════════════════════════════════════════════════════════════════════
+
+LLM Inference Tracking:
+  from src.monitoring.metrics_integration import track_inference
+  
+  with track_inference("model-name") as metrics:
+      response = await llm.chat(messages)
+      metrics.set_tokens(prompt_tokens=100, response_tokens=50)
+
+Platform Message Tracking:
+  from src.monitoring.metrics_integration import track_platform_message
+  
+  with track_platform_message("discord") as metrics:
+      response = await send_message(channel, text)
+      metrics.set_message_length(len(response))
+
+Record Emotional State:
+  from src.monitoring.metrics_integration import record_emotion_state
+  
+  record_emotion_state({
+      "loneliness": 0.3,
+      "excitement": 0.7,
+      "frustration": 0.2,
+      "jealousy": 0.1,
+      "vulnerability": 0.4,
+      "confidence": 0.8,
+      "curiosity": 0.6,
+      "affection": 0.5,
+      "defensiveness": 0.1
+  })
+
+Record Conversation Turn:
+  from src.monitoring.metrics_integration import record_conversation_turn
+  
+  record_conversation_turn(
+      user_message_length=len(user_msg),
+      bot_response_length=len(bot_msg),
+      turn_number=turn_count,
+      sentiment_score=0.75  # 0.0 to 1.0
+  )
+
+Update Discord Bot Status:
+  from src.monitoring.metrics_integration import update_discord_bot_status
+  
+  update_discord_bot_status(
+      online=True,
+      latency_ms=45.0,
+      guild_count=15,
+      connected_users=230
+  )
+
+═════════════════════════════════════════════════════════════════════════
+
+QUERYING METRICS
+═════════════════════════════════════════════════════════════════════════
+
+Get Current Emotions:
+  from src.monitoring.metrics_integration import get_current_emotions
+  emotions = get_current_emotions()
+
+Get Emotion History:
+  from src.monitoring.metrics_integration import get_emotion_history
+  history = get_emotion_history("loneliness", limit=100)
+
+Get Platform Stats:
+  from src.monitoring.metrics_integration import get_platform_stats
+  stats = get_platform_stats()  # Returns all platforms
+
+Get Conversation Quality:
+  from src.monitoring.metrics_integration import get_conversation_quality
+  quality = get_conversation_quality()
+
+Get Discord Status:
+  from src.monitoring.metrics_integration import get_discord_status
+  status = get_discord_status()
+
+═════════════════════════════════════════════════════════════════════════
+
+REST API ENDPOINTS
+═════════════════════════════════════════════════════════════════════════
+
+GET /api/metrics/llm
+  Response: { response_times: [], tokens_generated: [], latencies: [], 
+              stats: { avg_response_time, max_response_time, total_tokens } }
+
+GET /api/metrics/platforms
+  Response: { platforms: { discord: {message_count, avg_response_time_ms,
+              error_count, error_rate}, ... }, timestamp }
+
+GET /api/metrics/conversation
+  Response: { quality: { avg_user_message_length, avg_response_length,
+              avg_sentiment, max_conversation_turn }, recent_turns: [] }
+
+GET /api/metrics/emotions/history?hours=1&limit=100
+  Response: { emotions: { loneliness: [{timestamp, value}, ...], ... },
+              hours, timestamp }
+
+GET /api/metrics/discord
+  Response: { bot_status: { online, latency_ms, guild_count,
+              connected_users }, timestamp }
+
+═════════════════════════════════════════════════════════════════════════
+
+DASHBOARD
+═════════════════════════════════════════════════════════════════════════
+
+Start Dashboard:
+  python3 -m src.monitoring.dashboard_server
+
+Access Dashboard:
+  http://localhost:8080
+
+Updates:
+  Every 5 seconds via WebSocket
+
+Metrics Displayed:
+  • System Health (Memory, CPU, Disk)
+  • Discord Bot Status (Online, Latency, Guilds, Users)
+  • LLM Performance (Response time, tokens)
+  • Conversation Quality (Message lengths, sentiment)
+  • Emotion State (Radar chart + trend chart)
+  • Platform Metrics (Per-platform stats)
+  • Alerts (Active alerts)
+
+═════════════════════════════════════════════════════════════════════════
+
+METRIC NAMES (SQLite)
+═════════════════════════════════════════════════════════════════════════
+
+LLM:
+  llm_response_time_ms              [HISTOGRAM]
+  llm_tokens_generated              [GAUGE]
+  llm_inference_latency_ms          [HISTOGRAM]
+  llm_prompt_tokens                 [GAUGE]
+  llm_errors                        [COUNTER]
+
+Platform:
+  platform_{name}_messages          [COUNTER]
+  platform_{name}_response_time_ms  [HISTOGRAM]
+  platform_{name}_message_length    [GAUGE]
+  platform_{name}_errors            [COUNTER]
+
+Conversation:
+  conversation_user_message_length  [GAUGE]
+  conversation_bot_response_length  [GAUGE]
+  conversation_turn_number          [GAUGE]
+  conversation_sentiment            [GAUGE]
+
+Emotion:
+  emotion_loneliness                [GAUGE]
+  emotion_excitement                [GAUGE]
+  emotion_frustration               [GAUGE]
+  emotion_jealousy                  [GAUGE]
+  emotion_vulnerability             [GAUGE]
+  emotion_confidence                [GAUGE]
+  emotion_curiosity                 [GAUGE]
+  emotion_affection                 [GAUGE]
+  emotion_defensiveness             [GAUGE]
+
+Discord:
+  discord_bot_online                [GAUGE] (1.0 or 0.0)
+  discord_bot_latency_ms            [GAUGE]
+  discord_guild_count               [GAUGE]
+  discord_connected_users           [GAUGE]
+
+═════════════════════════════════════════════════════════════════════════
+
+FILE LOCATIONS
+═════════════════════════════════════════════════════════════════════════
+
+Backend:
+  src/monitoring/metrics.py
+  src/monitoring/metrics_integration.py
+  src/monitoring/dashboard_server.py
+
+Frontend:
+  src/monitoring/dashboard_static/index.html
+  src/monitoring/dashboard_static/dashboard.js
+
+Storage:
+  ~/.demi/metrics.db (SQLite)
+
+Documentation:
+  METRICS_QUICK_START.md (5 min)
+  METRICS_GUIDE.md (comprehensive)
+  METRICS_ARCHITECTURE.md (technical)
+  METRICS_IMPLEMENTATION_SUMMARY.md (details)
+
+Examples:
+  examples/metrics_integration_examples.py
+
+═════════════════════════════════════════════════════════════════════════
+
+CONFIGURATION
+═════════════════════════════════════════════════════════════════════════
+
+Metrics Collector:
+  from src.monitoring.metrics import MetricsCollector
+  
+  collector = MetricsCollector(
+      db_path="~/.demi/metrics.db",
+      retention_days=7,
+      collection_interval=30
+  )
+
+Dashboard Server:
+  from src.monitoring.dashboard_server import DashboardServer
+  
+  server = DashboardServer(
+      host="0.0.0.0",
+      port=8080,
+      update_interval=5,
+      api_key="optional-api-key"
+  )
+
+═════════════════════════════════════════════════════════════════════════
+
+COLOR CODING (DASHBOARD)
+═════════════════════════════════════════════════════════════════════════
+
+Status Indicators:
+  GREEN    = Healthy (< 80% resources, no errors)
+  YELLOW   = Warning (80-90% resources, some errors)
+  RED      = Critical (> 90% resources, high error rate)
+
+Metric Colors:
+  Online:   Green with pulse animation
+  Offline:  Red with pulse animation
+  
+Discord:
+  Online:   Green indicator
+  Offline:  Red indicator
+
+═════════════════════════════════════════════════════════════════════════
+
+COMMON PATTERNS
+═════════════════════════════════════════════════════════════════════════
+
+Pattern: Record with Automatic Timing
+  with track_inference("model"):
+      response = await operation()
+
+Pattern: Record with Manual Timing
+  from src.monitoring.metrics import get_llm_metrics
+  llm = get_llm_metrics()
+  llm.record_inference(
+      response_time_ms=150.0,
+      tokens_generated=256,
+      inference_latency_ms=120.0
+  )
+
+Pattern: Query and Display
+  emotions = get_current_emotions()
+  print(f"Loneliness: {emotions['loneliness']}")
+
+Pattern: Aggregation
+  from src.monitoring.metrics import get_metrics_collector
+  from datetime import timedelta
+  
+  collector = get_metrics_collector()
+  avg_time = collector.aggregate(
+      "llm_response_time_ms",
+      "avg",
+      timedelta(hours=1)
+  )
+
+═════════════════════════════════════════════════════════════════════════
+
+TESTING
+═════════════════════════════════════════════════════════════════════════
+
+Run Examples:
+  python3 examples/metrics_integration_examples.py
+
+Test Import:
+  python3 -c "from src.monitoring.metrics_integration import *; print('OK')"
+
+Check Database:
+  sqlite3 ~/.demi/metrics.db "SELECT COUNT(*) FROM metrics"
+
+Test API:
+  curl http://localhost:8080/api/metrics/llm
+  curl http://localhost:8080/api/metrics/discord
+
+═════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING
+═════════════════════════════════════════════════════════════════════════
+
+Metrics not showing?
+  → Check: ls ~/.demi/metrics.db
+  → Verify: Run example file
+  → Check API: curl http://localhost:8080/api/metrics/llm
+
+Slow dashboard?
+  → Reduce update_interval (default 5s)
+  → Reduce history limit in queries
+  → Clear old data: get_metrics_collector().cleanup_old_data()
+
+High memory?
+  → Reduce retention_days (default 7)
+  → Increase collection_interval
+  → Reduce history limits
+
+Database locked?
+  → Restart dashboard server
+  → Check for running Python processes
+
+═════════════════════════════════════════════════════════════════════════
+
+For more information, see:
+  METRICS_QUICK_START.md   - Getting started
+  METRICS_GUIDE.md         - Complete guide
+  METRICS_ARCHITECTURE.md  - Technical details

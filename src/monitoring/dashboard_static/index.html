@@ -525,6 +525,186 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Metrics Grid - 2 column layout */
+        .metrics-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        /* Status Indicators */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .status-indicator.online {
+            background: rgba(0, 184, 148, 0.1);
+            color: var(--success-color);
+        }
+
+        .status-indicator.offline {
+            background: rgba(225, 112, 85, 0.1);
+            color: var(--danger-color);
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.online {
+            background: var(--success-color);
+        }
+
+        .status-dot.offline {
+            background: var(--danger-color);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Discord Status Card */
+        .discord-card {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            padding: 16px;
+            background: var(--bg-color);
+            border-radius: 8px;
+        }
+
+        .discord-stat {
+            text-align: center;
+        }
+
+        .discord-stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+        }
+
+        .discord-stat-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Performance Metrics Display */
+        .perf-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg-color);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .perf-metric-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .perf-metric-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        /* Quality Score */
+        .quality-score {
+            display: inline-block;
+            padding: 8px 16px;
+            background: var(--bg-color);
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .quality-score.good {
+            color: var(--success-color);
+        }
+
+        .quality-score.fair {
+            color: var(--warning-color);
+        }
+
+        .quality-score.poor {
+            color: var(--danger-color);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1000px) {
+            .metrics-2col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px;
+            }
+
+            header {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .health-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .emotion-legend {
+                grid-template-columns: 1fr;
+            }
+
+            .discord-card {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-2col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
     </style>
 </head>
 <body>
@@ -627,6 +807,89 @@
                         <span class="platform-name">LLM</span>
                         <span class="platform-status">Unknown</span>
                     </div>
+                </div>
+            </section>
+
+            <!-- Discord Bot Status -->
+            <section class="card">
+                <h2>🤖 Discord Bot Status</h2>
+                <div style="margin-bottom: 16px;">
+                    <div class="status-indicator" id="discord-status-indicator">
+                        <span class="status-dot offline"></span>
+                        <span>Offline</span>
+                    </div>
+                </div>
+                <div class="discord-card" id="discord-stats">
+                    <div class="discord-stat">
+                        <div class="discord-stat-value" id="discord-latency">--</div>
+                        <div class="discord-stat-label">Latency (ms)</div>
+                    </div>
+                    <div class="discord-stat">
+                        <div class="discord-stat-value" id="discord-guilds">--</div>
+                        <div class="discord-stat-label">Guilds</div>
+                    </div>
+                    <div class="discord-stat">
+                        <div class="discord-stat-value" id="discord-users">--</div>
+                        <div class="discord-stat-label">Users</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LLM Performance Metrics -->
+            <section class="card">
+                <h2>⚡ LLM Performance</h2>
+                <div id="llm-metrics" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Response Time</span>
+                        <span class="perf-metric-value" id="llm-avg-response">-- ms</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Max Response Time</span>
+                        <span class="perf-metric-value" id="llm-max-response">-- ms</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Tokens (1h)</span>
+                        <span class="perf-metric-value" id="llm-total-tokens">--</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Conversation Quality -->
+            <section class="card">
+                <h2>💬 Conversation Quality</h2>
+                <div id="conversation-metrics" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg User Message Length</span>
+                        <span class="perf-metric-value" id="conv-user-length">-- chars</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Response Length</span>
+                        <span class="perf-metric-value" id="conv-response-length">-- chars</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Sentiment</span>
+                        <span class="perf-metric-value" id="conv-sentiment">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Max Conversation Turn</span>
+                        <span class="perf-metric-value" id="conv-max-turn">--</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Emotion History Chart -->
+            <section class="card full-width">
+                <h2>Emotion State Trend</h2>
+                <div class="chart-container">
+                    <canvas id="emotion-history-chart" width="800" height="250"></canvas>
+                </div>
+            </section>
+
+            <!-- Platform Metrics Chart -->
+            <section class="card full-width">
+                <h2>Platform Interaction Metrics</h2>
+                <div id="platform-metrics-display" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Dynamically populated -->
                 </div>
             </section>
 

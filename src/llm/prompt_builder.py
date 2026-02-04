@@ -162,13 +162,9 @@ class PromptBuilder:
         else:
             self.logger.warning("⚠️  Goddess persona NOT found in system prompt")
 
-        # Inject architecture overview and relevant code if codebase reader available
+        # Inject relevant code only for technical queries (NOT for greetings/casual chat)
         code_context = ""
         if self.codebase_reader:
-            # Get architecture overview
-            overview = self.codebase_reader.get_architecture_overview()
-            code_context = f"\n\nMY ARCHITECTURE:\n{overview}"
-
             # Extract query from last user message
             last_user_message = None
             for msg in reversed(conversation_history):
@@ -176,22 +172,37 @@ class PromptBuilder:
                     last_user_message = msg.get("content", "")
                     break
 
-            # Get relevant code snippets if we have a query
-            if last_user_message:
+            # Only inject code for technical queries (avoid simple greetings)
+            # Skip code injection for very short or greeting-like messages
+            is_greeting = (
+                last_user_message and
+                (
+                    len(last_user_message) <= 10 or  # Very short messages
+                    last_user_message.lower().strip() in [
+                        "hi", "hello", "hey", "yo", "sup",
+                        "greetings", "how are you", "how are you?",
+                        "what's up", "what's up?"
+                    ]
+                )
+            )
+
+            if not is_greeting and last_user_message:
+                # Get relevant code snippets only for non-greeting queries
                 relevant_code = self.codebase_reader.get_relevant_code(
                     last_user_message, max_results=2
                 )
 
                 if relevant_code:
-                    code_context += "\n\nRELEVANT CODE (For your reference):\n"
+                    code_context = "\n\nRELEVANT CODE (For your reference):\n"
                     for snippet in relevant_code:
                         code_context += f"\n--- {snippet.class_or_function} ({snippet.file_path}) ---\n"
                         code_context += snippet.content[:500]  # Limit snippet size
                         if len(snippet.content) > 500:
                             code_context += "\n... (truncated)"
 
-            # Append code context to system prompt
-            system_prompt += code_context
+            # Append code context to system prompt (only if not empty)
+            if code_context:
+                system_prompt += code_context
 
         # Count tokens
         system_prompt_tokens = self.token_counter(system_prompt)

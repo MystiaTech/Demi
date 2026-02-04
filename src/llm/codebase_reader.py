@@ -318,11 +318,24 @@ Message Processing Workflow:
             "at",
             "to",
             "for",
+            "hi",
+            "hello",
+            "hey",
+            "thanks",
+            "ok",
+            "okay",
+            "sure",
+            "yes",
+            "no",
         }
 
         words = query.lower().split()
         keywords = [w.strip("?.,!;:") for w in words if w not in stop_words]
-        return [k for k in keywords if k]  # Remove empty strings
+
+        # Filter out very short keywords that are unlikely to match code meaningfully
+        keywords = [k for k in keywords if len(k) > 2 or k in {"ui", "db", "io", "ai", "ml", "api"}]
+
+        return keywords  # Remove empty strings
 
     def _calculate_relevance(
         self, query_keywords: List[str], snippet: CodeSnippet
