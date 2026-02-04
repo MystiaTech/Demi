@@ -52,8 +52,10 @@ Discord bot authentication token from the Discord Developer Portal.
 
 **Example:**
 ```bash
-DISCORD_BOT_TOKEN=your_bot_token_placeholder
+DISCORD_BOT_TOKEN=your_bot_token_here_replace_with_actual_token
 ```
+
+**Note:** Replace with your actual token from Discord Developer Portal. Never commit real tokens to version control.
 
 **Security Notes:**
 - Never share or commit this token
