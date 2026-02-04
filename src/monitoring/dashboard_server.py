@@ -161,44 +161,6 @@ class DashboardServer:
                 logger.error("Metrics endpoint error", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.app.get("/api/metrics/{name}")
-        async def get_metric_history(
-            name: str,
-            hours: int = 24,
-            aggregate: Optional[str] = None,
-        ):
-            """Get metric history.
-
-            Args:
-                name: Metric name
-                hours: Hours of history to retrieve
-                aggregate: Optional aggregation ('avg', 'min', 'max')
-            """
-            try:
-                from datetime import timedelta
-
-                time_range = timedelta(hours=hours)
-
-                if aggregate:
-                    value = self.metrics_collector.aggregate(name, aggregate, time_range)
-                    return {
-                        "name": name,
-                        "aggregate": aggregate,
-                        "value": value,
-                        "hours": hours,
-                    }
-                else:
-                    metrics = self.metrics_collector.get_metric(name, time_range)
-                    return {
-                        "name": name,
-                        "data": [m.to_dict() for m in metrics],
-                        "count": len(metrics),
-                        "hours": hours,
-                    }
-            except Exception as e:
-                logger.error("Metric history error", error=str(e), name=name)
-                raise HTTPException(status_code=500, detail=str(e))
-
         @self.app.get("/api/alerts")
         async def get_alerts(active_only: bool = False, level: Optional[str] = None):
             """Get alerts.
@@ -501,6 +463,47 @@ class DashboardServer:
                 }
             except Exception as e:
                 logger.error("Discord metrics endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/metrics/{name}")
+        async def get_metric_history(
+            name: str,
+            hours: int = 24,
+            aggregate: Optional[str] = None,
+        ):
+            """Get metric history (generic endpoint for any metric name).
+
+            Note: This should be the last metric endpoint to avoid shadowing
+            more specific routes like /api/metrics/llm, /api/metrics/conversation, etc.
+
+            Args:
+                name: Metric name
+                hours: Hours of history to retrieve
+                aggregate: Optional aggregation ('avg', 'min', 'max')
+            """
+            try:
+                from datetime import timedelta
+
+                time_range = timedelta(hours=hours)
+
+                if aggregate:
+                    value = self.metrics_collector.aggregate(name, aggregate, time_range)
+                    return {
+                        "name": name,
+                        "aggregate": aggregate,
+                        "value": value,
+                        "hours": hours,
+                    }
+                else:
+                    metrics = self.metrics_collector.get_metric(name, time_range)
+                    return {
+                        "name": name,
+                        "data": [m.to_dict() for m in metrics],
+                        "count": len(metrics),
+                        "hours": hours,
+                    }
+            except Exception as e:
+                logger.error("Metric history error", error=str(e), name=name)
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.websocket("/ws")
