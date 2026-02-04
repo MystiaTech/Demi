@@ -481,6 +481,9 @@ class ResponseProcessor:
         text = text.replace(" \n", "\n")
         text = text.replace("\n ", "\n")
 
+        # Format actions more clearly
+        text = self._format_actions(text)
+
         # Strip again after token removal
         text = text.strip()
 
@@ -489,6 +492,62 @@ class ResponseProcessor:
             return "I forgot what I was thinking... try again?"
 
         return text
+    
+    def _format_actions(self, text: str) -> str:
+        """
+        Format action indicators (*action*) more clearly.
+        
+        Converts *action* to italicized format and ensures they're visually distinct.
+        Also handles actions at the start of messages to make them flow better.
+        
+        Args:
+            text: Text potentially containing actions
+            
+        Returns:
+            Text with formatted actions
+        """
+        import re
+        
+        # Pattern to find *action* or *multi word action*
+        action_pattern = r'\*([^*]+)\*'
+        
+        def format_action(match):
+            action = match.group(1).strip()
+            # Don't format if it looks like markdown emphasis (single word in caps)
+            if action.isupper() and ' ' not in action:
+                return match.group(0)  # Keep original
+            # Format as italic action
+            return f" _{action}_ "
+        
+        # Replace actions
+        text = re.sub(action_pattern, format_action, text)
+        
+        # Handle actions at start of message - make them flow better
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            # If line starts with an action (now italic), ensure good flow
+            if line.startswith('_') and line.endswith('_'):
+                # Pure action line - keep as is but ensure spacing
+                formatted_lines.append(line)
+            elif line.startswith('_') and '_' in line[1:]:
+                # Line starts with action - add some visual separation
+                action_end = line.find('_', 1)
+                if action_end > 0:
+                    action = line[:action_end+1]
+                    rest = line[action_end+1:].strip()
+                    if rest:
+                        formatted_lines.append(f"{action} {rest}")
+                    else:
+                        formatted_lines.append(action)
+                else:
+                    formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
 
     def _count_tokens(self, text: str) -> int:
         """

@@ -16,6 +16,7 @@ from src.emotion.models import EmotionalState
 from src.emotion.persistence import EmotionPersistence
 from src.autonomy.refusals import RefusalSystem
 from src.autonomy.config import AutonomyConfig
+from src.autonomy.self_improvement import SelfImprovementSystem
 
 
 @dataclass
@@ -69,6 +70,12 @@ class AutonomyCoordinator:
 
         # Initialize refusal system
         self.refusal_system = RefusalSystem(self.logger)
+        
+        # Initialize self-improvement system
+        self.self_improvement = SelfImprovementSystem(conductor)
+        
+        # Load self-improvement config
+        self._load_self_improvement_config()
 
         # Initialize spontaneous initiator (will be created if needed)
         self.spontaneous_initiator = None
@@ -87,7 +94,27 @@ class AutonomyCoordinator:
         self.action_history: List[Dict[str, Any]] = []
         self.max_history_size = 100
 
-        self.logger.info("AutonomyCoordinator initialized with refusal system")
+        self.logger.info("AutonomyCoordinator initialized with refusal system and self-improvement")
+    
+    def _load_self_improvement_config(self):
+        """Load self-improvement configuration from global config."""
+        try:
+            from src.core.config import DemiConfig
+            config = DemiConfig.load()
+            autonomy_config = config.autonomy if hasattr(config, 'autonomy') else {}
+            
+            si_config = autonomy_config.get('self_improvement', {})
+            self.self_improvement.enabled = si_config.get('enabled', True)
+            self.code_review_interval = si_config.get('code_review_interval', 1800)
+            
+            self.logger.info(
+                f"Self-improvement config: enabled={self.self_improvement.enabled}, "
+                f"interval={self.code_review_interval}s"
+            )
+        except Exception as e:
+            self.logger.warning(f"Could not load self-improvement config: {e}")
+            self.self_improvement.enabled = True
+            self.code_review_interval = 1800
 
     def start_autonomy(self) -> bool:
         """
@@ -113,6 +140,12 @@ class AutonomyCoordinator:
             self.background_tasks["processor"] = asyncio.create_task(
                 self._process_autonomous_actions()
             )
+            
+            # Start self-improvement task if enabled
+            if self.self_improvement.enabled:
+                self.background_tasks["self_improvement"] = asyncio.create_task(
+                    self._run_self_improvement()
+                )
 
             self.current_status.active = True
             self.current_status.tasks_running = len(self.background_tasks)
@@ -599,3 +632,52 @@ class AutonomyCoordinator:
             "refusal_rate": len(self.refused_requests)
             / max(1, len(self.action_history) + len(self.refused_requests)),
         }
+
+
+    async def _run_self_improvement(self):
+        """
+        Background task for self-improvement.
+        
+        Periodically runs code review and generates improvement suggestions.
+        """
+        self.logger.info(f"Self-improvement task started (interval: {self.code_review_interval}s)")
+        
+        while self.is_running:
+            try:
+                # Check if it's time for a review
+                if self.self_improvement.last_review_time is None:
+                    should_review = True
+                else:
+                    time_since_last = (datetime.now(timezone.utc) - self.self_improvement.last_review_time).total_seconds()
+                    should_review = time_since_last >= self.code_review_interval
+                
+                if should_review:
+                    self.logger.info("Running scheduled self-code review...")
+                    suggestions = await self.self_improvement.run_code_review()
+                    
+                    if suggestions:
+                        self.logger.info(f"Generated {len(suggestions)} improvement suggestions")
+                        
+                        # Log high priority suggestions
+                        high_priority = [s for s in suggestions if s.priority == "high"]
+                        if high_priority:
+                            self.logger.warning(f"Found {len(high_priority)} high-priority improvements")
+                
+                # Wait before next check
+                await asyncio.sleep(300)  # Check every 5 minutes
+                
+            except asyncio.CancelledError:
+                self.logger.info("Self-improvement task cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in self-improvement task: {e}")
+                await asyncio.sleep(600)  # Wait 10 minutes on error
+
+    def get_self_improvement_status(self) -> Dict[str, Any]:
+        """
+        Get status of self-improvement system.
+        
+        Returns:
+            Status dictionary
+        """
+        return self.self_improvement.get_status()
