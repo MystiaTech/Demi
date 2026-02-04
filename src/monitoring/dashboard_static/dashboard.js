@@ -50,6 +50,7 @@ class DemiDashboard {
             this.fetchConversationMetrics();
             this.fetchEmotionHistory();
             this.fetchDiscordStatus();
+            this.fetchVoiceMetrics();
         }, 5000);
     }
 
@@ -1026,6 +1027,85 @@ class DemiDashboard {
         }
         if (users) {
             users.textContent = status.connected_users || '--';
+        }
+    }
+
+    async fetchVoiceMetrics() {
+        try {
+            const [ttsRes, sttRes] = await Promise.all([
+                fetch('/api/metrics/voice/tts'),
+                fetch('/api/metrics/voice/stt')
+            ]);
+
+            if (ttsRes.ok) {
+                const ttsData = await ttsRes.json();
+                console.debug('TTS metrics fetched:', ttsData);
+                this.updateTTSMetrics(ttsData);
+            }
+
+            if (sttRes.ok) {
+                const sttData = await sttRes.json();
+                console.debug('STT metrics fetched:', sttData);
+                this.updateSTTMetrics(sttData);
+            }
+        } catch (error) {
+            console.debug('Failed to fetch voice metrics:', error);
+        }
+    }
+
+    updateTTSMetrics(data) {
+        if (!data.tts) return;
+
+        const tts = data.tts;
+        const backend = document.getElementById('tts-backend');
+        const total = document.getElementById('tts-total');
+        const latency = document.getElementById('tts-latency');
+        const cache = document.getElementById('tts-cache');
+
+        if (backend) {
+            backend.textContent = tts.backend || '--';
+        }
+        if (total) {
+            total.textContent = tts.total_utterances || '0';
+        }
+        if (latency) {
+            latency.textContent = tts.avg_latency_ms ? `${tts.avg_latency_ms.toFixed(0)} ms` : '-- ms';
+        }
+        if (cache) {
+            const cacheRate = tts.cache_hit_rate ? (tts.cache_hit_rate * 100).toFixed(1) : '0';
+            cache.textContent = `${cacheRate}%`;
+        }
+    }
+
+    updateSTTMetrics(data) {
+        if (!data.stt) return;
+
+        const stt = data.stt;
+        const backend = document.getElementById('stt-backend');
+        const model = document.getElementById('stt-model');
+        const total = document.getElementById('stt-total');
+        const latency = document.getElementById('stt-latency');
+        const confidence = document.getElementById('stt-confidence');
+        const errors = document.getElementById('stt-errors');
+
+        if (backend) {
+            backend.textContent = stt.backend || '--';
+        }
+        if (model) {
+            model.textContent = stt.model_size || '--';
+        }
+        if (total) {
+            total.textContent = stt.total_transcriptions || '0';
+        }
+        if (latency) {
+            latency.textContent = stt.avg_latency_ms ? `${stt.avg_latency_ms.toFixed(0)} ms` : '-- ms';
+        }
+        if (confidence) {
+            const conf = stt.avg_confidence ? (stt.avg_confidence * 100).toFixed(1) : '0';
+            confidence.textContent = `${conf}%`;
+        }
+        if (errors) {
+            errors.textContent = stt.errors || '0';
         }
     }
 }

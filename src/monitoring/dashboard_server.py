@@ -470,6 +470,93 @@ class DashboardServer:
                 logger.error("Discord metrics endpoint error", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @self.app.get("/api/metrics/voice/tts")
+        async def get_tts_metrics_endpoint():
+            """Get Text-to-Speech metrics and status."""
+            try:
+                from src.voice.tts import TextToSpeech
+
+                # Try to get TTS instance from conductor or create new one
+                tts_stats = {
+                    "backend": "not_initialized",
+                    "total_utterances": 0,
+                    "avg_latency_ms": 0,
+                    "cache_hit_rate": 0,
+                    "preferred_voice": None,
+                }
+
+                # Try to get from Discord voice if available
+                try:
+                    from src.integrations.discord_voice import DiscordVoiceClient
+                    # This is a static attempt - in production, would get from active client
+                    tts = TextToSpeech()
+                    if tts.get_backend():
+                        tts_stats = tts.get_stats()
+                except Exception:
+                    pass
+
+                return {
+                    "tts": tts_stats,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.debug(f"TTS metrics endpoint: {e}")
+                return {
+                    "tts": {
+                        "backend": "not_available",
+                        "total_utterances": 0,
+                        "avg_latency_ms": 0,
+                        "cache_hit_rate": 0,
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+        @self.app.get("/api/metrics/voice/stt")
+        async def get_stt_metrics_endpoint():
+            """Get Speech-to-Text metrics and status."""
+            try:
+                from src.voice.stt import FasterWhisperSTT
+
+                # Try to get STT instance from conductor or create new one
+                stt_stats = {
+                    "backend": "not_initialized",
+                    "model_size": "unknown",
+                    "total_transcriptions": 0,
+                    "avg_latency_ms": 0,
+                    "avg_confidence": 0,
+                    "errors": 0,
+                    "model_loaded": False,
+                }
+
+                # Try to get from Discord voice if available
+                try:
+                    from src.integrations.discord_voice import DiscordVoiceClient
+                    # This is a static attempt - in production, would get from active client
+                    stt = FasterWhisperSTT.for_rtx3060()
+                    if stt.is_model_loaded():
+                        stt_stats = stt.get_stats()
+                except Exception:
+                    pass
+
+                return {
+                    "stt": stt_stats,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.debug(f"STT metrics endpoint: {e}")
+                return {
+                    "stt": {
+                        "backend": "not_available",
+                        "model_size": "unknown",
+                        "total_transcriptions": 0,
+                        "avg_latency_ms": 0,
+                        "avg_confidence": 0,
+                        "errors": 0,
+                        "model_loaded": False,
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                }
+
         @self.app.get("/api/metrics/{name}")
         async def get_metric_history(
             name: str,

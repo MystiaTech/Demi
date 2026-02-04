@@ -937,6 +937,60 @@
                     <canvas id="response-chart" width="800" height="200"></canvas>
                 </div>
             </section>
+
+            <!-- Voice Metrics: TTS/STT -->
+            <section class="card">
+                <h2>🔊 Text-to-Speech (TTS)</h2>
+                <div id="tts-metrics" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Backend</span>
+                        <span class="perf-metric-value" id="tts-backend">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Total Utterances</span>
+                        <span class="perf-metric-value" id="tts-total">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Latency</span>
+                        <span class="perf-metric-value" id="tts-latency">-- ms</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Cache Hit Rate</span>
+                        <span class="perf-metric-value" id="tts-cache">--%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Voice Metrics: STT -->
+            <section class="card">
+                <h2>🎤 Speech-to-Text (STT)</h2>
+                <div id="stt-metrics" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Backend</span>
+                        <span class="perf-metric-value" id="stt-backend">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Model Size</span>
+                        <span class="perf-metric-value" id="stt-model">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Total Transcriptions</span>
+                        <span class="perf-metric-value" id="stt-total">--</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Latency</span>
+                        <span class="perf-metric-value" id="stt-latency">-- ms</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Avg Confidence</span>
+                        <span class="perf-metric-value" id="stt-confidence">--%</span>
+                    </div>
+                    <div class="perf-metric">
+                        <span class="perf-metric-label">Errors</span>
+                        <span class="perf-metric-value" id="stt-errors" style="color: var(--warning-color);">--</span>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <footer>
