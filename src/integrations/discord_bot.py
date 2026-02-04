@@ -315,6 +315,7 @@ class DiscordBot(BasePlatform):
         self._bot_task: Optional[asyncio.Task] = None
         self.autonomy_coordinator: Optional[AutonomyCoordinator] = None
         self.voice_client: Optional[DiscordVoiceClient] = None
+        self.ramble_task: Optional[RambleTask] = None
 
     def initialize(self, config: dict) -> bool:
         """Initialize Discord bot with intents and event handlers.
@@ -607,6 +608,14 @@ class DiscordBot(BasePlatform):
             else:
                 self.logger.warning("Autonomy coordinator not available in conductor")
 
+            # Initialize ramble task for autonomous rambling
+            try:
+                ramble_store = RambleStore()
+                self.ramble_task = RambleTask(self.bot, conductor, ramble_store, self.logger)
+                self.logger.info("Discord ramble task initialized")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize ramble task: {e}")
+
             # Initialize voice client if enabled
             voice_enabled = os.getenv("DISCORD_VOICE_ENABLED", "false").lower() == "true"
             if voice_enabled and HAS_VOICE:
@@ -741,6 +750,11 @@ class DiscordBot(BasePlatform):
             if self.voice_client:
                 await self.voice_client.leave_all_channels()
                 self.logger.info("Voice client shutdown")
+
+            # Shutdown ramble task
+            if self.ramble_task:
+                self.ramble_task.stop()
+                self.logger.info("Ramble task stopped")
 
             # Autonomy system is managed by conductor, no need to stop here
 
