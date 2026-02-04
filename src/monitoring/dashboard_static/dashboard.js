@@ -646,7 +646,7 @@ class DemiDashboard {
         if (!container) return;
 
         // Default platforms that should always be shown
-        const defaultPlatforms = ['discord', 'telegram', 'llm'];
+        const defaultPlatforms = ['discord', 'telegram', 'llm', 'android'];
         const allPlatforms = defaultPlatforms.map(name => ({
             name,
             info: platforms[name] || { status: 'unknown', error: 'Not available' }
