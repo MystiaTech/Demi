@@ -83,11 +83,22 @@ class DemiConfig:
             "platforms": defaults.get("platforms", {}),
             "lm": {
                 **defaults.get("lm", {}),
+                "enable_fallback": _env_bool(
+                    "DEMI_ENABLE_LLM_FALLBACK",
+                    defaults.get("lm", {}).get("enable_fallback", True),
+                ),
                 "ollama": {
                     **(defaults.get("lm", {}).get("ollama", {})),
                     "base_url": _env_str(
                         "OLLAMA_BASE_URL",
                         defaults.get("lm", {}).get("ollama", {}).get("base_url", "http://localhost:11434"),
+                    ),
+                },
+                "lmstudio": {
+                    **(defaults.get("lm", {}).get("lmstudio", {})),
+                    "base_url": _env_str(
+                        "LMSTUDIO_BASE_URL",
+                        defaults.get("lm", {}).get("lmstudio", {}).get("base_url", "http://localhost:1234"),
                     ),
                 }
             },

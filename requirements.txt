@@ -10,6 +10,9 @@ discord.py>=2.6.0
 # Telegram Integration
 python-telegram-bot>=20.8
 
+# HTTP client for LMStudio fallback
+aiohttp>=3.8.0
+
 # Discord Voice Integration (Phase 08-03)
 # Note: Requires FFmpeg and libopus system packages
 # Ubuntu/Debian: sudo apt-get install ffmpeg libopus0

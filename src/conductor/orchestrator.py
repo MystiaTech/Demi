@@ -30,7 +30,7 @@ from src.conductor.router import RequestRouter
 from src.conductor.metrics import get_metrics
 from src.conductor.circuit_breaker import get_circuit_breaker_manager
 from src.llm import (
-    OllamaInference,
+    UnifiedLLMInference,
     LLMConfig,
     InferenceError,
     CodebaseReader,
@@ -98,8 +98,8 @@ class Conductor:
         # Codebase reader for self-awareness
         self.codebase_reader = CodebaseReader(logger=self._logger)
 
-        # LLM inference engine with codebase context
-        self.llm = OllamaInference(
+        # LLM inference engine with Ollama/LMStudio fallback
+        self.llm = UnifiedLLMInference(
             config=LLMConfig.from_global_config(self._config),
             logger=self._logger,
             codebase_reader=self.codebase_reader,

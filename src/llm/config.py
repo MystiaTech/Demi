@@ -12,7 +12,7 @@ from src.core.config import DemiConfig
 
 @dataclass
 class LLMConfig:
-    """Configuration for LLM inference via Ollama."""
+    """Configuration for LLM inference via Ollama or LMStudio."""
 
     model_name: str = "llama3.2:1b"
     """Name of the model to use with Ollama (e.g., llama3.2:1b, llama3.2:3b)."""
@@ -28,6 +28,12 @@ class LLMConfig:
 
     ollama_base_url: str = "http://localhost:11434"
     """Base URL for Ollama API server."""
+
+    lmstudio_base_url: str = "http://localhost:1234"
+    """Base URL for LMStudio API server (fallback provider)."""
+
+    enable_lmstudio_fallback: bool = True
+    """Enable automatic fallback to LMStudio if Ollama is unavailable."""
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -63,12 +69,21 @@ class LLMConfig:
             LLMConfig instance with values from config or defaults
         """
         lm_settings = config.lm or {}
+        ollama_settings = lm_settings.get("ollama", {})
+        lmstudio_settings = lm_settings.get("lmstudio", {})
+
         return cls(
-            model_name=lm_settings.get("model_name", "llama3.2:1b"),
-            temperature=lm_settings.get("temperature", 0.7),
-            max_tokens=lm_settings.get("max_tokens", 256),
-            timeout_sec=lm_settings.get("timeout_sec", 10),
-            ollama_base_url=lm_settings.get(
-                "ollama_base_url", "http://localhost:11434"
+            model_name=ollama_settings.get("model", "llama3.2:1b"),
+            temperature=ollama_settings.get("temperature", 0.7),
+            max_tokens=ollama_settings.get("context_window", 256),
+            timeout_sec=ollama_settings.get("timeout", 30),
+            ollama_base_url=ollama_settings.get(
+                "base_url", "http://localhost:11434"
+            ),
+            lmstudio_base_url=lmstudio_settings.get(
+                "base_url", "http://localhost:1234"
+            ),
+            enable_lmstudio_fallback=lm_settings.get(
+                "enable_fallback", True
             ),
         )
