@@ -450,16 +450,18 @@ class DiscordBot(BasePlatform):
                     # Calculate response time
                     response_time_ms = (time.time() - request_start) * 1000
 
-                    # Extract and send plain text response
+                    # Extract and send response with rich formatting
                     try:
                         # Handle both dict and string responses
                         if isinstance(response, dict):
                             response_text = response.get("content", "")
+                            # Send as rich embed with emotion visualization
+                            embed = format_response_as_embed(response, message.author.name)
+                            await message.channel.send(embed=embed)
                         else:
                             response_text = response
-
-                        # Send as plain message (not a reply) to avoid reply UI
-                        await message.channel.send(response_text)
+                            # Fallback to plain text if response wasn't a dict
+                            await message.channel.send(response_text)
 
                         # Record success metrics
                         platform_metrics = get_platform_metrics()
