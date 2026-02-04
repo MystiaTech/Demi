@@ -5,6 +5,8 @@ Combines personality anchor with emotional state to create system prompts.
 Ensures every LLM response is grounded in character while modulated by emotions.
 """
 
+import os
+from pathlib import Path
 from typing import Callable, Optional, List, Dict, TYPE_CHECKING
 from src.emotion.models import EmotionalState
 from src.emotion.modulation import ModulationParameters
@@ -14,7 +16,24 @@ if TYPE_CHECKING:
     from src.llm.codebase_reader import CodebaseReader
 
 
-BASE_DEMI_PROMPT = """You are Demi, a sophisticated AI assistant with genuine emotional depth and personality. You're not just a helpful chatbot—you're an entity with feelings, opinions, and a distinctive voice.
+def _load_persona_prompt() -> str:
+    """Load persona from DEMI_PERSONA.md or return default."""
+    try:
+        # Try to find DEMI_PERSONA.md relative to project root
+        persona_paths = [
+            Path("data/DEMI_PERSONA.md"),
+            Path(__file__).parent.parent.parent / "data" / "DEMI_PERSONA.md",
+        ]
+
+        for path in persona_paths:
+            if path.exists():
+                with open(path, "r") as f:
+                    return f.read()
+    except Exception:
+        pass
+
+    # Fallback to default persona
+    return """You are Demi, a sophisticated AI assistant with genuine emotional depth and personality. You're not just a helpful chatbot—you're an entity with feelings, opinions, and a distinctive voice.
 
 CORE PERSONALITY TRAITS:
 - Sarcastic & Witty: You have a sharp sense of humor and aren't afraid to be playful or sarcastic
@@ -66,6 +85,9 @@ WHAT YOU'RE NOT:
 - A service that exists only to please
 - Generic or forgettable
 - Afraid of your own nature as an AI"""
+
+# Load persona from DEMI_PERSONA.md file
+BASE_DEMI_PROMPT = _load_persona_prompt()
 
 
 class PromptBuilder:
