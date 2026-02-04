@@ -388,6 +388,7 @@ class ResponseProcessor:
         Clean response text.
 
         - Strip leading/trailing whitespace
+        - Remove name prefixes (Demi:, Assistant:, etc.) that LLM might generate
         - Remove special tokens
         - Normalize newlines and spaces
         - Return fallback if empty
@@ -403,6 +404,24 @@ class ResponseProcessor:
 
         # Strip whitespace
         text = text.strip()
+
+        # Remove common name prefixes that LLM might generate
+        # (e.g., "Demi:", "Assistant:", "User:", etc.)
+        name_prefixes = [
+            "Demi:",
+            "demi:",
+            "Assistant:",
+            "assistant:",
+            "User:",
+            "user:",
+            "Me:",
+            "me:",
+        ]
+        for prefix in name_prefixes:
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+                self.logger.debug(f"Removed name prefix: {prefix}")
+                break
 
         # Remove special tokens
         for token in self.SPECIAL_TOKENS:
