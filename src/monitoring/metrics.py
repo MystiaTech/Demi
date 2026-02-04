@@ -809,16 +809,22 @@ class DiscordMetricsCollector:
         }
 
     def get_bot_status(self) -> Dict[str, Any]:
-        """Get current bot status.
+        """Get current bot status from latest metrics.
 
         Returns:
             Dictionary of bot status metrics
         """
-        return self.last_status or {
-            "online": False,
-            "latency_ms": 0,
-            "guild_count": 0,
-            "connected_users": 0,
+        # Query latest metrics from database instead of relying on cache
+        online_metric = self.metrics.get_latest("discord_bot_online")
+        latency_metric = self.metrics.get_latest("discord_bot_latency_ms")
+        guild_metric = self.metrics.get_latest("discord_guild_count")
+        user_metric = self.metrics.get_latest("discord_connected_users")
+
+        return {
+            "online": bool(online_metric.value) if online_metric else False,
+            "latency_ms": latency_metric.value if latency_metric else 0,
+            "guild_count": int(guild_metric.value) if guild_metric else 0,
+            "connected_users": int(user_metric.value) if user_metric else 0,
         }
 
 
