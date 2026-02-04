@@ -107,6 +107,22 @@ class MobileAPIServer:
                 "version": "1.0.0",
             }
 
+        @self.app.get("/api/metrics")
+        async def metrics():
+            """Get mobile API metrics for dashboard.
+
+            Returns:
+                Mobile app statistics and connection info
+            """
+            return {
+                "status": "healthy",
+                "active_connections": len(self.websocket_connections),
+                "total_sessions": len(self.user_sessions),
+                "connections": list(self.websocket_connections.keys()),
+                "sessions": list(self.user_sessions.keys()),
+                "timestamp": datetime.now().isoformat(),
+            }
+
         @self.app.get("/api/user/emotions")
         async def get_emotions(user_id: str):
             """Get current emotional state for user.
@@ -121,10 +137,8 @@ class MobileAPIServer:
                 if not self.conductor:
                     return {"emotions": {}, "timestamp": datetime.now().isoformat()}
 
-                # Get emotion state from conductor
-                emotion_state = await self.conductor.emotion_persistence.load_state(
-                    user_id
-                )
+                # Get emotion state from conductor (global emotion state)
+                emotion_state = self.conductor.emotion_persistence.load_latest_state()
 
                 return {
                     "emotions": emotion_state.to_dict() if emotion_state else {},
@@ -205,9 +219,7 @@ class MobileAPIServer:
 
                             # Send emotional state
                             emotion_state = (
-                                await self.conductor.emotion_persistence.load_state(
-                                    user_id
-                                )
+                                self.conductor.emotion_persistence.load_latest_state()
                             )
                             if emotion_state:
                                 await websocket.send_json(

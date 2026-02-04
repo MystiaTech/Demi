@@ -543,12 +543,24 @@ class Conductor:
                 )
                 emotion_state_after = processed.emotional_state_after
                 response_content = processed.cleaned_text
+
+                # Log emotion changes
+                emotions_before = emotion_state.get_all_emotions()
+                emotions_after = emotion_state_after.get_all_emotions()
+                self._logger.info(
+                    "Emotions updated",
+                    loneliness_delta=round(emotions_after["loneliness"] - emotions_before["loneliness"], 2),
+                    excitement_delta=round(emotions_after["excitement"] - emotions_before["excitement"], 2),
+                    frustration_delta=round(emotions_after["frustration"] - emotions_before["frustration"], 2),
+                )
+
+                # Save the UPDATED emotional state, not the old one
+                self.emotion_persistence.save_state(processed.emotional_state_after)
             else:
                 # Fallback: just get default emotion state
                 emotion_state_after = emotion_state.to_dict()
-
-            # Persist updated emotion state
-            self.emotion_persistence.save_state(emotion_state)
+                # Save unchanged state
+                self.emotion_persistence.save_state(emotion_state)
 
             return {
                 "content": response_content,
