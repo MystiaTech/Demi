@@ -144,6 +144,8 @@ class DemiDashboard {
                 this.updateAlerts(data.alerts);
             }
             this.updateTimestamp(data.timestamp);
+            // Fetch mobile metrics with each update
+            this.fetchMobileMetrics();
         } else if (data.type === 'alert') {
             this.addAlert(data.alert);
         } else if (data.type === 'pong') {
@@ -181,8 +183,54 @@ class DemiDashboard {
                 this.updatePlatforms(platforms.platforms);
             }
 
+            // Fetch mobile metrics
+            this.fetchMobileMetrics();
+
         } catch (error) {
             console.error('Failed to fetch initial data:', error);
+        }
+    }
+
+    async fetchMobileMetrics() {
+        try {
+            const metricsRes = await fetch('http://localhost:8081/api/metrics');
+            if (metricsRes.ok) {
+                const metrics = await metricsRes.json();
+                this.updateMobileMetrics(metrics);
+            } else {
+                this.updateMobileMetrics({ status: 'offline', active_connections: 0, total_sessions: 0 });
+            }
+        } catch (error) {
+            console.warn('Failed to fetch mobile metrics:', error);
+            this.updateMobileMetrics({ status: 'offline', active_connections: 0, total_sessions: 0 });
+        }
+    }
+
+    updateMobileMetrics(metrics) {
+        const connectionsEl = document.getElementById('mobile-connections');
+        const sessionsEl = document.getElementById('mobile-sessions');
+        const statusEl = document.getElementById('mobile-status');
+        const detailsEl = document.getElementById('mobile-details');
+
+        if (connectionsEl) {
+            connectionsEl.textContent = metrics.active_connections || 0;
+        }
+
+        if (sessionsEl) {
+            sessionsEl.textContent = metrics.total_sessions || 0;
+        }
+
+        if (statusEl) {
+            const isHealthy = metrics.status === 'healthy';
+            statusEl.textContent = isHealthy ? '✅ Healthy' : '⚠️ Offline';
+            statusEl.style.color = isHealthy ? '#4ecdc4' : '#ff6b6b';
+        }
+
+        if (detailsEl && metrics.connections && metrics.connections.length > 0) {
+            const connectionList = metrics.connections.map(conn => `<div>👤 ${conn}</div>`).join('');
+            detailsEl.innerHTML = `<strong>Connected Users:</strong><div style="margin-top: 8px;">${connectionList}</div>`;
+        } else if (detailsEl) {
+            detailsEl.innerHTML = '<em>No active connections</em>';
         }
     }
 
