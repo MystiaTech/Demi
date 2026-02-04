@@ -1,0 +1,26 @@
+name: Discord Notifications
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Send Discord notification
+      env:
+        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      run: |
+        if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+          pip install requests
+          python3 scripts/discord_webhook.py
+        else
+          echo "DISCORD_WEBHOOK_URL not configured - skipping notification"
+        fi
