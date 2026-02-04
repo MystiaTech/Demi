@@ -88,6 +88,11 @@ class DemiLogger:
         self._logger = logging.getLogger("demi")
         self._is_configured = True
 
+        # Suppress expected shutdown errors from Starlette/Uvicorn
+        # (CancelledError during lifespan shutdown is normal and harmless)
+        logging.getLogger("starlette.routing").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn").setLevel(logging.WARNING)
+
         # Configure structlog if available
         if HAS_STRUCTLOG:
             self._configure_structlog()
