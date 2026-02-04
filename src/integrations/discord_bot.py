@@ -389,11 +389,12 @@ class DiscordBot(BasePlatform):
                 if message.author.bot:
                     return
 
-                # Check if message is a mention or DM
+                # Check if message is a mention, DM, or in Demi's channel
                 is_mention = self.bot.user.mentioned_in(message)
                 is_dm = isinstance(message.channel, discord.DMChannel)
+                demi_channel_id = os.getenv("DISCORD_DEMI_CHANNEL_ID", "")
 
-                if not (is_mention or is_dm):
+                if not (is_mention or is_dm or (demi_channel_id and str(message.channel.id) == demi_channel_id)):
                     return  # Ignore messages not directed at Demi
 
                 # Extract context

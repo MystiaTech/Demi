@@ -41,6 +41,7 @@ from src.llm import (
 from src.emotion.persistence import EmotionPersistence
 from src.emotion.modulation import PersonalityModulator
 from src.emotion.interactions import InteractionHandler
+from src.emotion.models import EmotionalState
 from src.monitoring.dashboard_server import DashboardServer
 from src.mobile.api import MobileAPIServer
 
@@ -509,8 +510,11 @@ class Conductor:
             }
 
         try:
-            # Load user's emotional state
-            emotion_state = await self.emotion_persistence.load_state(user_id)
+            # Load Demi's current emotional state
+            emotion_state = self.emotion_persistence.load_latest_state()
+            if not emotion_state:
+                # Initialize with default state if none exists
+                emotion_state = EmotionalState()
 
             # Get modulation parameters based on emotional state
             modulation = self.personality_modulator.compute_modulation(emotion_state)
@@ -544,7 +548,7 @@ class Conductor:
                 emotion_state_after = emotion_state.to_dict()
 
             # Persist updated emotion state
-            await self.emotion_persistence.save_state(user_id, emotion_state)
+            self.emotion_persistence.save_state(emotion_state)
 
             return {
                 "content": response_content,
