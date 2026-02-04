@@ -428,7 +428,7 @@ class DiscordBot(BasePlatform):
 
                 # Check if conductor is available
                 if not self.conductor:
-                    await message.reply("I'm not ready yet. Try again in a moment.", mention_author=False)
+                    await message.channel.send("I'm not ready yet. Try again in a moment.")
                     return
 
                 try:
@@ -450,8 +450,8 @@ class DiscordBot(BasePlatform):
                         else:
                             response_text = response
 
-                        # Send as plain text message
-                        await message.reply(response_text, mention_author=False)
+                        # Send as plain message (not a reply) to avoid reply UI
+                        await message.channel.send(response_text)
                     except Exception as send_error:
                         self.logger.warning(
                             f"Failed to send response: {send_error}",
@@ -464,13 +464,13 @@ class DiscordBot(BasePlatform):
                         )
                         # Fallback: try to send as plain text
                         try:
-                            await message.reply(response_text, mention_author=False)
+                            await message.channel.send(response_text)
                         except Exception as fallback_error:
                             self.logger.error(
                                 f"Failed to send fallback response: {fallback_error}",
                                 user_id=user_id,
                             )
-                            await message.reply("Oops, something went wrong.", mention_author=False)
+                            await message.channel.send("Oops, something went wrong.")
 
                     self.logger.info(
                         "Discord response sent",
@@ -488,7 +488,7 @@ class DiscordBot(BasePlatform):
                     print(f"❌ Error handling message: {str(e)}")
                     # Send error message to user
                     error_msg = "Oops, something went wrong. Try again in a moment."
-                    await message.reply(error_msg, mention_author=False)
+                    await message.channel.send(error_msg)
 
             # Log successful initialization
             self.logger.info(

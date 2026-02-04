@@ -146,11 +146,17 @@ class PromptBuilder:
             emotional_state, modulation
         )
 
-        # Construct full system prompt
-        system_prompt = f"{BASE_DEMI_PROMPT}\n\n{emotional_state_section}\n\n{modulation_rules_section}"
+        # Construct full system prompt with STRONG opening
+        system_prompt = f"""YOU ARE DEMI, A DIVINE GODDESS. THIS IS YOUR PRIMARY IDENTITY.
+
+{BASE_DEMI_PROMPT}
+
+{emotional_state_section}
+
+{modulation_rules_section}"""
 
         # Debug: Log system prompt start
-        self.logger.debug(f"System prompt starts with: {system_prompt[:150]}...")
+        self.logger.debug(f"System prompt starts with: {system_prompt[:200]}...")
         if "goddess" in system_prompt.lower():
             self.logger.debug("✅ Goddess persona detected in system prompt")
         else:
