@@ -10,6 +10,8 @@ class DemiDashboard {
         this.memoryHistory = [];
         this.responseTimeHistory = [];
         this.maxHistoryPoints = 120; // 10 minutes at 5s intervals
+        this._metricsInterval = null;
+        this._metricsIntervalActive = false;
         this.emotionColors = {
             loneliness: '#ff6b6b',
             excitement: '#4ecdc4',
@@ -38,13 +40,24 @@ class DemiDashboard {
 
     startMetricsUpdates() {
         // Update specialized metrics every 5 seconds
-        setInterval(() => {
+        // Only run once - prevent multiple intervals
+        if (this._metricsIntervalActive) return;
+        this._metricsIntervalActive = true;
+
+        this._metricsInterval = setInterval(() => {
             this.fetchLLMMetrics();
             this.fetchPlatformMetrics();
             this.fetchConversationMetrics();
             this.fetchEmotionHistory();
             this.fetchDiscordStatus();
         }, 5000);
+    }
+
+    stopMetricsUpdates() {
+        if (this._metricsInterval) {
+            clearInterval(this._metricsInterval);
+            this._metricsIntervalActive = false;
+        }
     }
 
     setupTheme() {
@@ -763,7 +776,10 @@ class DemiDashboard {
             const response = await fetch('/api/metrics/llm');
             if (response.ok) {
                 const data = await response.json();
+                console.debug('LLM metrics fetched:', data);
                 this.updateLLMMetrics(data);
+            } else {
+                console.warn('LLM metrics fetch failed:', response.status);
             }
         } catch (error) {
             console.warn('Failed to fetch LLM metrics:', error);
@@ -796,7 +812,10 @@ class DemiDashboard {
             const response = await fetch('/api/metrics/platforms');
             if (response.ok) {
                 const data = await response.json();
+                console.debug('Platform metrics fetched:', data);
                 this.updatePlatformMetrics(data);
+            } else {
+                console.warn('Platform metrics fetch failed:', response.status);
             }
         } catch (error) {
             console.warn('Failed to fetch platform metrics:', error);
@@ -834,7 +853,10 @@ class DemiDashboard {
             const response = await fetch('/api/metrics/conversation');
             if (response.ok) {
                 const data = await response.json();
+                console.debug('Conversation metrics fetched:', data);
                 this.updateConversationMetrics(data);
+            } else {
+                console.warn('Conversation metrics fetch failed:', response.status);
             }
         } catch (error) {
             console.warn('Failed to fetch conversation metrics:', error);
@@ -868,7 +890,10 @@ class DemiDashboard {
             const response = await fetch('/api/metrics/emotions/history?hours=1&limit=50');
             if (response.ok) {
                 const data = await response.json();
+                console.debug('Emotion history fetched, emotions:', Object.keys(data.emotions || {}));
                 this.updateEmotionHistory(data);
+            } else {
+                console.warn('Emotion history fetch failed:', response.status);
             }
         } catch (error) {
             console.warn('Failed to fetch emotion history:', error);
@@ -949,7 +974,10 @@ class DemiDashboard {
             const response = await fetch('/api/metrics/discord');
             if (response.ok) {
                 const data = await response.json();
+                console.debug('Discord status fetched:', data.bot_status);
                 this.updateDiscordStatus(data);
+            } else {
+                console.warn('Discord status fetch failed:', response.status);
             }
         } catch (error) {
             console.warn('Failed to fetch Discord status:', error);
