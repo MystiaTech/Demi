@@ -156,6 +156,51 @@ class MobileAPIServer:
                 logger.error(f"Get emotions failed: {e}")
                 return {"emotions": {}, "error": str(e)}
 
+        @self.app.get("/api/self-improvement/status")
+        async def get_self_improvement_status():
+            """Get self-improvement system status.
+            
+            Returns:
+                Status of self-improvement including suggestions
+            """
+            try:
+                if not self.conductor or not hasattr(self.conductor, 'autonomy_coordinator'):
+                    return {
+                        "enabled": False,
+                        "message": "Autonomy coordinator not available"
+                    }
+                
+                autonomy = self.conductor.autonomy_coordinator
+                if not hasattr(autonomy, 'self_improvement'):
+                    return {
+                        "enabled": False,
+                        "message": "Self-improvement not initialized"
+                    }
+                
+                status = autonomy.self_improvement.get_status()
+                pending = autonomy.self_improvement.get_pending_suggestions()
+                
+                return {
+                    "enabled": status["enabled"],
+                    "last_review": status["last_review"],
+                    "total_suggestions": status["total_suggestions"],
+                    "pending_suggestions": status["pending_suggestions"],
+                    "implemented": status["implemented_suggestions"],
+                    "high_priority": status["high_priority"],
+                    "recent_suggestions": [
+                        {
+                            "file": s.file_path,
+                            "priority": s.priority,
+                            "confidence": s.confidence,
+                            "suggestion": s.suggestion[:100] + "..." if len(s.suggestion) > 100 else s.suggestion
+                        }
+                        for s in pending[:5]  # Return top 5 pending
+                    ]
+                }
+            except Exception as e:
+                logger.error(f"Get self-improvement status failed: {e}")
+                return {"enabled": False, "error": str(e)}
+
         @self.app.get("/audio/{filename}")
         async def serve_audio(filename: str):
             """Serve audio file for lip sync.

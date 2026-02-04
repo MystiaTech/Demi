@@ -369,3 +369,5 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+# Flutter app - don't ignore lib directory
+!flutter_app/lib/

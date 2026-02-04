@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Demi VRM Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: transparent;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(155, 89, 182, 0.8);
+            pointer-events: none;
+        }
+        #loading.hidden {
+            display: none;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(155, 89, 182, 0.3);
+            border-top-color: #9b59b6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #e74c3c;
+            font-size: 12px;
+            text-align: center;
+            display: none;
+            padding: 20px;
+        }
+    </style>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- GLTFLoader -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Three-VRM -->
+    <script src="https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@0.6.7/lib/three-vrm.min.js"></script>
+</head>
+<body>
+    <div id="canvas-container">
+        <div id="loading">
+            <div class="spinner"></div>
+            <div>Summoning Demi...</div>
+        </div>
+        <div id="error">
+            <div>Failed to load avatar</div>
+            <div id="error-details"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            vrmUrl: '../models/Demi_.vrm',  // Relative path to VRM file
+            backgroundColor: 0x00000000,    // Transparent
+            autoRotate: true,
+            cameraPosition: { x: 0, y: 1.2, z: 2.5 }
+        };
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = null; // Transparent
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(
+            30,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            100
+        );
+        camera.position.set(config.cameraPosition.x, config.cameraPosition.y, config.cameraPosition.z);
+
+        // Renderer with transparency
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            preserveDrawingBuffer: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+
+        // Rim light for dramatic effect
+        const rimLight = new THREE.SpotLight(0x9b59b6, 0.5);
+        rimLight.position.set(-5, 5, -5);
+        rimLight.lookAt(0, 1, 0);
+        scene.add(rimLight);
+
+        // Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 1.5;
+        controls.maxDistance = 4;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.target.set(0, 1, 0);
+        controls.autoRotate = config.autoRotate;
+        controls.autoRotateSpeed = 1.0;
+
+        // VRM variables
+        let currentVrm = null;
+        let mixer = null;
+        let clock = new THREE.Clock();
+
+        // Blink animation variables
+        let blinkState = {
+            isBlinking: false,
+            nextBlinkTime: 0,
+            blinkDuration: 0.15,
+            blinkStartTime: 0
+        };
+
+        // Load VRM
+        function loadVRM(url) {
+            const loader = new THREE.GLTFLoader();
+            
+            // Enable VRM extension
+            loader.register((parser) => {
+                return new THREE_VRM.VRMLoaderPlugin(parser);
+            });
+
+            loader.load(
+                url,
+                (gltf) => {
+                    const vrm = gltf.userData.vrm;
+                    
+                    if (currentVrm) {
+                        scene.remove(currentVrm.scene);
+                        currentVrm.dispose();
+                    }
+                    
+                    currentVrm = vrm;
+                    scene.add(vrm.scene);
+                    
+                    // Setup VRM
+                    vrm.humanoid.getNormalizedBoneNode('hips').position.y = 1;
+                    
+                    // Hide loading
+                    document.getElementById('loading').classList.add('hidden');
+                    
+                    // Notify Flutter
+                    if (window.FlutterVRM) {
+                        window.FlutterVRM.postMessage('loaded');
+                    }
+                    
+                    console.log('VRM loaded successfully');
+                },
+                (progress) => {
+                    console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+                },
+                (error) => {
+                    console.error('Error loading VRM:', error);
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error-details').textContent = error.message || 'Unknown error';
+                }
+            );
+        }
+
+        // Blink animation
+        function updateBlink(deltaTime) {
+            if (!currentVrm) return;
+            
+            const now = clock.getElapsedTime();
+            
+            if (!blinkState.isBlinking) {
+                if (now >= blinkState.nextBlinkTime) {
+                    blinkState.isBlinking = true;
+                    blinkState.blinkStartTime = now;
+                    blinkState.nextBlinkTime = now + 2 + Math.random() * 4; // Random interval 2-6 seconds
+                }
+            } else {
+                const blinkProgress = (now - blinkState.blinkStartTime) / blinkState.blinkDuration;
+                
+                if (blinkProgress >= 1) {
+                    blinkState.isBlinking = false;
+                    setBlink(0);
+                } else {
+                    // Close then open (sin wave)
+                    const blinkValue = Math.sin(blinkProgress * Math.PI);
+                    setBlink(blinkValue);
+                }
+            }
+        }
+
+        function setBlink(value) {
+            if (!currentVrm || !currentVrm.expressionManager) return;
+            
+            try {
+                currentVrm.expressionManager.setValue('blink', value);
+            } catch (e) {
+                // Expression might not exist
+            }
+        }
+
+        // Set emotion/expression
+        function setExpression(expressionName, value) {
+            if (!currentVrm || !currentVrm.expressionManager) return;
+            
+            try {
+                // Reset all expressions first
+                const expressions = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
+                expressions.forEach(exp => {
+                    currentVrm.expressionManager.setValue(exp, 0);
+                });
+                
+                // Set new expression
+                if (expressions.includes(expressionName)) {
+                    currentVrm.expressionManager.setValue(expressionName, Math.max(0, Math.min(1, value)));
+                }
+            } catch (e) {
+                console.warn('Expression not available:', expressionName);
+            }
+        }
+
+        // Look at point
+        function lookAt(x, y) {
+            if (!currentVrm || !currentVrm.lookAt) return;
+            
+            // Convert screen coordinates to world space roughly
+            const targetX = (x - 0.5) * 2;
+            const targetY = -(y - 0.5) * 2;
+            
+            currentVrm.lookAt.target.position.set(targetX, targetY + 1.5, 3);
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const deltaTime = clock.getDelta();
+            
+            if (currentVrm) {
+                currentVrm.update(deltaTime);
+                updateBlink(deltaTime);
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Message handler from Flutter
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (typeof data === 'string') {
+                try {
+                    const command = JSON.parse(data);
+                    handleCommand(command);
+                } catch (e) {
+                    // Not JSON, treat as simple string command
+                    handleCommand({ type: data });
+                }
+            } else if (typeof data === 'object') {
+                handleCommand(data);
+            }
+        });
+
+        function handleCommand(command) {
+            console.log('Received command:', command);
+            
+            switch (command.type) {
+                case 'setExpression':
+                    setExpression(command.expression, command.value || 1.0);
+                    break;
+                case 'lookAt':
+                    lookAt(command.x, command.y);
+                    break;
+                case 'setAutoRotate':
+                    controls.autoRotate = command.enabled;
+                    break;
+                case 'resetCamera':
+                    camera.position.set(config.cameraPosition.x, config.cameraPosition.y, config.cameraPosition.z);
+                    controls.target.set(0, 1, 0);
+                    break;
+            }
+        }
+
+        // Start
+        loadVRM(config.vrmUrl);
+        animate();
+
+        // Expose functions for Flutter
+        window.setDemiExpression = setExpression;
+        window.setDemiLookAt = lookAt;
+    </script>
+</body>
+</html>
