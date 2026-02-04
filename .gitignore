@@ -148,7 +148,10 @@ activemq-data/
 *.sage.py
 
 # Environments
+# Note: .env.example is COMMITTED so users can see required variables
+# Only .env (with actual secrets) is ignored
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -348,7 +351,10 @@ pubspec.lock
 doc/api/
 
 # dotenv environment variables file
-.env*
+# Only ignore .env (with secrets), NOT .env.example (which documents variables)
+.env
+.env.local
+.env.*.local
 
 # Avoid committing generated Javascript files:
 *.dart.js

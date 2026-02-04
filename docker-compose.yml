@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: demi-postgres
+    environment:
+      POSTGRES_USER: demi
+      POSTGRES_PASSWORD: demi_secure_password
+      POSTGRES_DB: demi
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # DEMI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: demi-backend
+    env_file: .env  # Load from .env file (secure, not committed to git)
+    environment:
+      DATABASE_URL: postgresql://demi:demi_secure_password@postgres:5432/demi
+      OLLAMA_BASE_URL: http://ollama:11434
+      PIPER_VOICES_DIR: /app/voices/piper
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID:-}
+      DISCORD_RAMBLE_CHANNEL_ID: ${DISCORD_CHANNEL_ID:-}
+      DISCORD_VOICE_ENABLED: ${DISCORD_VOICE_ENABLED:-true}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://192.168.1.245:1234}
+      PREFER_LMSTUDIO: ${PREFER_LMSTUDIO:-false}
+      DEBUG: ${DEBUG:-False}
+    ports:
+      - "8080:8080"  # Main API
+      - "8081:8081"  # Mobile API
+    volumes:
+      - ./src:/app/src:ro
+      - piper_voices:/app/voices/piper
+      - ./data:/app/data
+      - /tmp/demi_audio:/tmp/demi_audio
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Ollama LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: demi-ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  piper_voices:
+  ollama_data:
+
+networks:
+  default:
+    name: demi-network

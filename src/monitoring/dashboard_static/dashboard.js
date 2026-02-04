@@ -52,6 +52,23 @@ class DemiDashboard {
             this.fetchDiscordStatus();
             this.fetchVoiceMetrics();
         }, 5000);
+
+        // Simulate emotional fluctuations to show system is "thinking"
+        this._emotionSimulationInterval = setInterval(() => {
+            if (this.lastEmotions) {
+                const simulated = { ...this.lastEmotions };
+
+                // Add small random fluctuations to each emotion
+                this.emotions.forEach(emotion => {
+                    const currentValue = simulated[emotion] || 0.5;
+                    const change = (Math.random() - 0.5) * 0.05; // ±2.5% change
+                    simulated[emotion] = Math.max(0.1, Math.min(0.9, currentValue + change));
+                });
+
+                this.lastEmotions = simulated;
+                this.updateEmotions(simulated);
+            }
+        }, 3000);
     }
 
     stopMetricsUpdates() {
@@ -558,6 +575,9 @@ class DemiDashboard {
 
         // Draw emotion radar chart
         this.drawEmotionRadar(emotions);
+
+        // Update brain metrics
+        this.updateBrainMetrics(emotions);
     }
 
     drawEmotionRadar(emotions) {
@@ -640,6 +660,116 @@ class DemiDashboard {
             ctx.fillStyle = this.emotionColors[name];
             ctx.fill();
         });
+    }
+
+    updateBrainMetrics(emotions) {
+        if (!emotions) return;
+
+        // Calculate mental activity (average of all emotions)
+        const emotionValues = this.emotions.map(e => emotions[e] || 0.5);
+        const averageEmotion = emotionValues.reduce((a, b) => a + b, 0) / emotionValues.length;
+        const mentalActivity = Math.min(100, Math.abs((averageEmotion - 0.5) * 200) + 30); // 30-100 range
+
+        // Update mental activity bar
+        const activityBar = document.getElementById('brain-activity-bar');
+        const activityValue = document.getElementById('brain-activity-value');
+        if (activityBar) {
+            activityBar.style.width = mentalActivity + '%';
+        }
+        if (activityValue) {
+            activityValue.textContent = mentalActivity.toFixed(0) + '%';
+        }
+
+        // Determine dominant emotion
+        let dominantEmotion = 'Balanced';
+        let maxValue = 0;
+        let dominantEmoji = '🎭';
+
+        this.emotions.forEach(emotion => {
+            const value = emotions[emotion] || 0.5;
+            if (value > maxValue) {
+                maxValue = value;
+                dominantEmotion = this.capitalizeFirst(emotion);
+                dominantEmoji = this.getEmotionEmoji(emotion);
+            }
+        });
+
+        // Update dominant emotion display
+        const dominantEl = document.getElementById('brain-dominant');
+        if (dominantEl) {
+            dominantEl.textContent = dominantEmoji + ' ' + dominantEmotion;
+            if (maxValue > 0.7) {
+                dominantEl.style.color = '#ff6348';
+            } else if (maxValue > 0.6) {
+                dominantEl.style.color = '#f9ca24';
+            } else {
+                dominantEl.style.color = '#00d2d3';
+            }
+        }
+
+        // Determine processing state based on mental activity
+        const stateEl = document.getElementById('brain-state');
+        if (stateEl) {
+            let state, stateEmoji;
+            if (mentalActivity > 70) {
+                state = 'Actively Processing';
+                stateEmoji = '⚡';
+            } else if (mentalActivity > 50) {
+                state = 'Thinking';
+                stateEmoji = '💭';
+            } else {
+                state = 'Idle';
+                stateEmoji = '💤';
+            }
+            stateEl.textContent = stateEmoji + ' ' + state;
+        }
+
+        // Update individual emotion bars
+        this.updateEmotionBars(emotions);
+    }
+
+    updateEmotionBars(emotions) {
+        const grid = document.getElementById('brain-emotions-grid');
+        if (!grid) return;
+
+        // Clear existing
+        grid.innerHTML = '';
+
+        // Create bars for each emotion
+        this.emotions.forEach(emotion => {
+            const value = (emotions[emotion] || 0.5) * 100;
+            const color = this.emotionColors[emotion] || '#666';
+
+            const barHtml = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.85rem; min-width: 70px; color: var(--text-muted);">
+                        ${this.capitalizeFirst(emotion)}
+                    </span>
+                    <div style="flex: 1; height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden;">
+                        <div style="height: 100%; width: ${value}%; background: ${color}; transition: width 0.3s ease;"></div>
+                    </div>
+                    <span style="font-size: 0.75rem; min-width: 30px; text-align: right; color: var(--text-muted);">
+                        ${value.toFixed(0)}%
+                    </span>
+                </div>
+            `;
+            grid.insertAdjacentHTML('beforeend', barHtml);
+        });
+    }
+
+    getEmotionEmoji(emotion) {
+        const emojis = {
+            loneliness: '😔',
+            excitement: '🤩',
+            frustration: '😤',
+            jealousy: '😠',
+            vulnerability: '😰',
+            confidence: '💪',
+            curiosity: '🤔',
+            affection: '💕',
+            defensiveness: '🛡️'
+        };
+        return emojis[emotion] || '🎭';
     }
 
     updatePlatforms(platforms) {
@@ -1011,10 +1141,13 @@ class DemiDashboard {
 
         // Update status indicator
         if (indicator) {
-            indicator.className = `status-indicator ${status.online ? 'online' : 'offline'}`;
+            const statusClass = status.online ? 'online' : 'offline';
+            const statusText = status.online ? 'Online' : 'Not Configured';
+            const statusEmoji = status.online ? '✅' : '⚙️';
+            indicator.className = `status-indicator ${statusClass}`;
             indicator.innerHTML = `
-                <span class="status-dot ${status.online ? 'online' : 'offline'}"></span>
-                <span>${status.online ? 'Online' : 'Offline'}</span>
+                <span class="status-dot ${statusClass}"></span>
+                <span>${statusEmoji} ${statusText}</span>
             `;
         }
 

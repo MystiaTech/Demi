@@ -7,6 +7,7 @@ Automatically falls back to LMStudio if Ollama is unavailable.
 """
 
 import asyncio
+import os
 import time
 from typing import Optional, List, Dict
 from src.llm.config import LLMConfig
@@ -642,18 +643,33 @@ class UnifiedLLMInference:
 
         self._last_health_check = now
 
-        # Try Ollama first
-        if await self.ollama.health_check():
-            self._active_provider = "ollama"
-            self.logger.debug("Using Ollama as active provider")
-            return True
+        # Check if user prefers LM Studio (via environment variable)
+        prefer_lmstudio = os.getenv("PREFER_LMSTUDIO", "false").lower() in ("true", "1", "yes")
 
-        # Fall back to LMStudio if enabled
-        if self.config.enable_lmstudio_fallback:
+        if prefer_lmstudio:
+            # Try LM Studio first if preferred
             if await self.lmstudio.health_check():
                 self._active_provider = "lmstudio"
-                self.logger.info("Ollama unavailable, switched to LMStudio provider")
+                self.logger.info("Using LMStudio as preferred provider")
                 return True
+            # Fall back to Ollama if LM Studio unavailable
+            if await self.ollama.health_check():
+                self._active_provider = "ollama"
+                self.logger.info("LMStudio unavailable, using Ollama as fallback")
+                return True
+        else:
+            # Try Ollama first (default behavior)
+            if await self.ollama.health_check():
+                self._active_provider = "ollama"
+                self.logger.debug("Using Ollama as active provider")
+                return True
+
+            # Fall back to LMStudio if enabled
+            if self.config.enable_lmstudio_fallback:
+                if await self.lmstudio.health_check():
+                    self._active_provider = "lmstudio"
+                    self.logger.info("Ollama unavailable, switched to LMStudio provider")
+                    return True
 
         self._active_provider = None
         self.logger.warning("No LLM providers available")
@@ -685,7 +701,67 @@ class UnifiedLLMInference:
         response_text = None
         error_type = None
 
-        # Try Ollama first
+        # Check if user prefers LM Studio
+        prefer_lmstudio = os.getenv("PREFER_LMSTUDIO", "false").lower() in ("true", "1", "yes")
+
+        if prefer_lmstudio:
+            # Try LM Studio first if preferred
+            try:
+                if await self.lmstudio.health_check():
+                    self._active_provider = "lmstudio"
+                    self.logger.debug("Using LMStudio provider (preferred)")
+                    response_text = await self.lmstudio.chat(
+                        messages, max_context_tokens, emotional_state_before
+                    )
+                    # Record success metrics
+                    if response_text:
+                        response_time_ms = (time.time() - start_time) * 1000
+                        tokens_generated = self._count_tokens(response_text)
+                        prompt_tokens = sum(self._count_tokens(m["content"]) for m in messages)
+
+                        metrics = get_llm_metrics()
+                        metrics.record_inference(
+                            response_time_ms=response_time_ms,
+                            tokens_generated=tokens_generated,
+                            inference_latency_ms=response_time_ms,
+                            prompt_tokens=prompt_tokens,
+                            model="lmstudio"
+                        )
+                    return response_text
+            except InferenceError as e:
+                self.logger.warning(f"LMStudio inference failed: {e}")
+                # Fall back to Ollama
+                pass
+
+            # Fall back to Ollama if LM Studio failed
+            try:
+                if await self.ollama.health_check():
+                    self._active_provider = "ollama"
+                    self.logger.info("Using Ollama as fallback")
+                    response_text = await self.ollama.chat(
+                        messages, max_context_tokens, emotional_state_before
+                    )
+                    if response_text:
+                        response_time_ms = (time.time() - start_time) * 1000
+                        tokens_generated = self._count_tokens(response_text)
+                        prompt_tokens = sum(self._count_tokens(m["content"]) for m in messages)
+
+                        metrics = get_llm_metrics()
+                        metrics.record_inference(
+                            response_time_ms=response_time_ms,
+                            tokens_generated=tokens_generated,
+                            inference_latency_ms=response_time_ms,
+                            prompt_tokens=prompt_tokens,
+                            model="ollama"
+                        )
+                    return response_text
+            except InferenceError as e:
+                self.logger.error(f"Both providers failed: {e}")
+                metrics = get_llm_metrics()
+                metrics.record_error("both_providers_failed", model="unified")
+                raise InferenceError("Both LMStudio and Ollama failed")
+
+        # Default: Try Ollama first
         try:
             if await self.ollama.health_check():
                 self._active_provider = "ollama"

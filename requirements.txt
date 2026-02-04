@@ -13,6 +13,12 @@ python-telegram-bot>=20.8
 # HTTP client for LMStudio fallback
 aiohttp>=3.8.0
 
+# Environment configuration
+python-dotenv>=1.0.0
+
+# WebSocket support for dashboard and real-time features
+websockets>=12.0
+
 # Discord Voice Integration (Phase 08-03)
 # Note: Requires FFmpeg and libopus system packages
 # Ubuntu/Debian: sudo apt-get install ffmpeg libopus0
@@ -48,16 +54,17 @@ structlog>=24.1.0  # Optional - falls back to standard logging
 
 # Voice I/O (Phase 08) - TTS
 pyttsx3>=2.90  # Cross-platform TTS (fallback)
-piper-tts>=1.2.0  # High-quality neural TTS
-onnxruntime-gpu>=1.16.0; sys_platform == 'linux'  # GPU acceleration for Piper (Linux)
-onnxruntime>=1.16.0; sys_platform != 'linux'  # CPU fallback for other platforms
+# piper-tts>=1.2.0  # High-quality neural TTS
+# onnxruntime-gpu>=1.16.0; sys_platform == 'linux'  # GPU acceleration for Piper (Linux)
+# onnxruntime>=1.16.0; sys_platform != 'linux'  # CPU fallback for other platforms
 sounddevice>=0.4.6  # Audio playback for Piper TTS
+g2p_en>=2.1.0  # Grapheme-to-Phoneme for lip sync
 
 # Voice I/O (Phase 08)
 faster-whisper>=1.0.0  # or openai-whisper
 ctranslate2>=4.0  # Required for faster-whisper int8 quantization
-pyaudio>=0.2.11
-webrtcvad>=2.0.10
+# pyaudio>=0.2.11  # Commented out - requires PortAudio system libraries (optional for audio recording)
+webrtcvad>=2.0.10  # Voice activity detection for Discord voice
 numpy>=1.24.0
 
 # Development

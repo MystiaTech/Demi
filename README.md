@@ -17,35 +17,39 @@ Demi is a local-first AI companion that feels like a real person. She has emotio
 
 ## 📚 Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Installation](docs/deployment/installation.md) | Step-by-step setup |
-| [First Run](docs/deployment/first-run.md) | Getting started |
-| [User Guide](docs/user-guide/) | Using Demi |
-| [API Docs](docs/api/) | REST API reference |
-| [Contributing](CONTRIBUTING.md) | Development guide |
+**→ [Full Documentation Index](docs/README.md)** ← Start here!
+
+Quick links:
+- **[Getting Started](docs/guides/00_START_HERE.md)** - Navigation guide
+- **[Docker Quick Start](docs/setup/QUICK_START.md)** - Get running in 5 minutes
+- **[Avatar Setup](docs/guides/VRM_QUICK_START.md)** - Add 3D avatar
+- **[Discord Bot](docs/setup/DISCORD_SETUP.md)** - Connect Discord
+- **[API Reference](docs/api/)** - Endpoint documentation
+- **[Troubleshooting](docs/guides/TROUBLESHOOTING.md)** - Common issues
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Docker)
 
 ```bash
 # Clone
-git clone https://giteas.fullmooncyberworks.com/mystiatech/Demi.git
+git clone https://github.com/mystiatech/Demi.git
 cd Demi
 
-# Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Configure
+# Setup environment
 cp .env.example .env
-# Edit .env with your Discord token
+# Edit .env with your Discord token (optional)
 
-# Start
-python main.py
+# Start Docker
+docker-compose up -d
+
+# Access
+# Dashboard:   http://localhost:8080
+# Mobile API:  http://localhost:8081
+# Ollama LLM:  http://localhost:11434
 ```
+
+**For detailed instructions:** See [Docker Setup Guide](docs/setup/DOCKER_SETUP.md)
 
 ---
 

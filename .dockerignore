@@ -1,0 +1,66 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Flutter/Node
+flutter_app/build/
+flutter_app/android/build/
+node_modules/
+npm-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
+.workspace
+
+# Test
+.pytest_cache/
+htmlcov/
+
+# Documentation
+docs/_build/
+
+# Temporary
+*.tmp
+temp/
+tmp/

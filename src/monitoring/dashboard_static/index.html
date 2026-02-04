@@ -892,6 +892,50 @@
                 </div>
             </section>
 
+            <!-- Brain Metrics Section -->
+            <section class="card full-width">
+                <h2>🧠 Brain Metrics - Demi's Cognitive State</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+                    <!-- Individual Emotions with Bars -->
+                    <div>
+                        <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--primary-color);">Emotional Dimensions</h3>
+                        <div id="brain-emotions-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Cognitive State -->
+                    <div>
+                        <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--primary-color);">Cognitive State</h3>
+                        <div style="display: flex; flex-direction: column; gap: 16px;">
+                            <div style="padding: 12px; background: var(--bg-color); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Mental Activity</div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="flex: 1; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden;">
+                                        <div id="brain-activity-bar" style="height: 100%; width: 50%; background: linear-gradient(90deg, #4ecdc4, #00d2d3); transition: width 0.3s ease;"></div>
+                                    </div>
+                                    <span id="brain-activity-value" style="font-weight: bold; min-width: 40px;">50%</span>
+                                </div>
+                            </div>
+
+                            <div style="padding: 12px; background: var(--bg-color); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Processing State</div>
+                                <div id="brain-state" style="font-size: 1.1rem; font-weight: bold; color: var(--info-color);">
+                                    💭 Idle
+                                </div>
+                            </div>
+
+                            <div style="padding: 12px; background: var(--bg-color); border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Dominant Emotion</div>
+                                <div id="brain-dominant" style="font-size: 1.1rem; font-weight: bold;">
+                                    🎭 Balanced
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Platform Metrics Chart -->
             <section class="card full-width">
                 <h2>Platform Interaction Metrics</h2>

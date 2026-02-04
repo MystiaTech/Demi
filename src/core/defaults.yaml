@@ -139,10 +139,10 @@ voice:
 
 autonomy:
   rambles:
-    enabled: false
-    frequency_per_day: 2
-    max_wait_hours: 8
-    min_wait_hours: 2
+    enabled: true
+    frequency_per_day: 5
+    max_wait_hours: 6
+    min_wait_hours: 1
   refusal:
     enabled: true
     frustration_threshold: 7

@@ -327,16 +327,16 @@ class DiscordBot(BasePlatform):
             True if initialization successful
         """
         try:
-            # Load token from environment
-            self.token = os.getenv("DISCORD_BOT_TOKEN")
+            # Load token from environment (check both naming conventions)
+            self.token = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
             if not self.token:
                 raise ValueError(
-                    "DISCORD_BOT_TOKEN environment variable not set. "
+                    "DISCORD_TOKEN (or DISCORD_BOT_TOKEN) environment variable not set. "
                     "Get token from Discord Developer Portal → Applications → [Your App] → Bot"
                 )
 
             if len(self.token.strip()) == 0:
-                raise ValueError("DISCORD_BOT_TOKEN is empty")
+                raise ValueError("DISCORD_TOKEN is empty")
 
             # Configure intents
             intents = discord.Intents.default()
@@ -395,7 +395,7 @@ class DiscordBot(BasePlatform):
                 # Check if message is a mention, DM, or in Demi's channel
                 is_mention = self.bot.user.mentioned_in(message)
                 is_dm = isinstance(message.channel, discord.DMChannel)
-                demi_channel_id = os.getenv("DISCORD_DEMI_CHANNEL_ID", "")
+                demi_channel_id = os.getenv("DISCORD_CHANNEL_ID", "")
 
                 if not (is_mention or is_dm or (demi_channel_id and str(message.channel.id) == demi_channel_id)):
                     return  # Ignore messages not directed at Demi
@@ -608,7 +608,9 @@ class DiscordBot(BasePlatform):
 
             # Initialize ramble task for autonomous rambling
             try:
-                ramble_store = RambleStore()
+                import os
+                db_path = os.path.expanduser("~/.demi/demi.db")
+                ramble_store = RambleStore(db_path=db_path)
                 self.ramble_task = RambleTask(self.bot, conductor, ramble_store, self.logger)
                 self.logger.info("Discord ramble task initialized")
             except Exception as e:

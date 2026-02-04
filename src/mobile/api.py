@@ -14,9 +14,11 @@ from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.core.logger import get_logger
+from src.voice.phoneme_generator import PhonemeGenerator, LipSyncData
 
 logger = get_logger()
 
@@ -55,6 +57,12 @@ class MobileAPIServer:
         self.websocket_connections: Dict[str, WebSocket] = {}
         self.user_sessions: Dict[str, Dict] = {}  # user_id -> session data
         self._running = False
+
+        # Audio and phoneme management
+        self.phoneme_generator = PhonemeGenerator()
+        self.audio_cache: Dict[str, str] = {}  # filename -> path mapping
+        self.audio_dir = Path("/tmp/demi_audio")
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
 
         # Setup routes
         self._setup_routes()
@@ -148,6 +156,41 @@ class MobileAPIServer:
                 logger.error(f"Get emotions failed: {e}")
                 return {"emotions": {}, "error": str(e)}
 
+        @self.app.get("/audio/{filename}")
+        async def serve_audio(filename: str):
+            """Serve audio file for lip sync.
+
+            Args:
+                filename: Audio filename
+
+            Returns:
+                Audio file content
+            """
+            try:
+                # Validate filename (prevent directory traversal)
+                if ".." in filename or "/" in filename:
+                    raise HTTPException(status_code=400, detail="Invalid filename")
+
+                file_path = self.audio_dir / filename
+
+                if not file_path.exists():
+                    logger.warning(f"Audio file not found: {filename}")
+                    raise HTTPException(status_code=404, detail="Audio file not found")
+
+                logger.debug(f"Serving audio: {filename}")
+
+                return FileResponse(
+                    path=file_path,
+                    media_type="audio/wav",
+                    headers={"Content-Disposition": "inline"},
+                )
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Audio serving failed: {e}")
+                raise HTTPException(status_code=500, detail="Audio serving failed")
+
         @self.app.websocket("/ws/chat/{user_id}")
         async def websocket_endpoint(websocket: WebSocket, user_id: str):
             """WebSocket endpoint for real-time chat.
@@ -208,14 +251,24 @@ class MobileAPIServer:
                                 else response.get("content", "Error processing request")
                             )
 
-                            await websocket.send_json(
-                                {
-                                    "type": "message",
-                                    "content": response_text,
-                                    "timestamp": datetime.now().isoformat(),
-                                    "from": "demi",
-                                }
+                            # Prepare message response with audio and lip sync data
+                            message_response = {
+                                "type": "message",
+                                "content": response_text,
+                                "timestamp": datetime.now().isoformat(),
+                                "from": "demi",
+                            }
+
+                            # Attempt to generate TTS audio and lip sync data
+                            audio_data = await self._generate_audio_with_lipsync(
+                                response_text, user_id
                             )
+                            if audio_data:
+                                message_response["audioUrl"] = audio_data["audioUrl"]
+                                message_response["phonemes"] = audio_data["phonemes"]
+                                message_response["duration"] = audio_data["duration"]
+
+                            await websocket.send_json(message_response)
 
                             # Send emotional state
                             emotion_state = (
@@ -258,6 +311,77 @@ class MobileAPIServer:
                 logger.error(f"WebSocket error: {e}", user_id=user_id)
                 if user_id in self.websocket_connections:
                     del self.websocket_connections[user_id]
+
+    async def _generate_audio_with_lipsync(
+        self,
+        text: str,
+        user_id: str,
+    ) -> Optional[Dict]:
+        """Generate audio and lip sync data for text.
+
+        Args:
+            text: Text to synthesize
+            user_id: User ID for context
+
+        Returns:
+            Dictionary with audioUrl, phonemes, duration or None if generation failed
+        """
+        try:
+            if not self.conductor or not hasattr(self.conductor, "piper_tts"):
+                logger.debug("Piper TTS not available, skipping audio generation")
+                return None
+
+            # Generate audio file
+            audio_path = await self.conductor.piper_tts.speak(
+                text,
+                save_path=None,
+            )
+
+            if not audio_path:
+                logger.warning("Audio generation failed")
+                return None
+
+            # Create unique filename based on user and timestamp
+            filename = f"{user_id}_{int(time.time() * 1000)}.wav"
+            dest_path = self.audio_dir / filename
+
+            # Copy audio to audio directory
+            import shutil
+            shutil.copy2(audio_path, dest_path)
+
+            # Get audio duration
+            import wave
+            try:
+                with wave.open(str(dest_path), 'rb') as wav_file:
+                    frames = wav_file.getnframes()
+                    rate = wav_file.getframerate()
+                    duration = frames / rate
+            except Exception as e:
+                logger.warning(f"Could not determine audio duration: {e}")
+                duration = 2.0  # Fallback duration
+
+            # Generate phoneme data
+            phonemes = self.phoneme_generator.generate_phonemes(
+                text,
+                duration,
+                speech_rate=1.0,
+            )
+
+            # Create audio URL (relative to mobile API base URL)
+            audio_url = f"/audio/{filename}"
+
+            # Convert phonemes to dictionaries for JSON serialization
+            phoneme_dicts = [p.to_dict() for p in phonemes]
+
+            return {
+                "audioUrl": audio_url,
+                "phonemes": phoneme_dicts,
+                "duration": duration,
+            }
+
+        except Exception as e:
+            logger.error(f"Audio/lip sync generation failed: {e}")
+            return None
 
     async def start(self, conductor):
         """Start the mobile API server.
