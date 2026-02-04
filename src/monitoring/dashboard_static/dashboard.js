@@ -834,7 +834,7 @@ class DemiDashboard {
         let html = '';
         Object.entries(data.platforms).forEach(([platform, stats]) => {
             html += `
-                <div style="padding: 12px; background: var(--bg-color); border-radius: 8px; border-left: 4px solid ${stats.error_rate > 5 ? 'var(--warning-color)' : 'var(--success-color)'};">
+                <div style="min-width: 0; padding: 12px; background: var(--bg-color); border-radius: 8px; border-left: 4px solid ${stats.error_rate > 5 ? 'var(--warning-color)' : 'var(--success-color)'};">
                     <div style="font-weight: 600; margin-bottom: 8px; text-transform: capitalize;">${platform}</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.9rem;">
                         <div><span style="color: var(--text-muted);">Messages:</span> <span style="color: var(--primary-color); font-weight: 600;">${stats.message_count}</span></div>
