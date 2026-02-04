@@ -55,8 +55,14 @@ class ResponseProcessor:
         "<|reserved_special_token",
         "[INST]",
         "[/INST]",
+        "<<SYS>>",
+        "<</SYS>>",
         "<s>",
         "</s>",
+        "###",
+        "Human:",
+        "Assistant:",
+        "System:",
     }
 
     def __init__(

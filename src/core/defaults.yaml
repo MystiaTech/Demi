@@ -148,8 +148,8 @@ autonomy:
     frustration_threshold: 7
     loneliness_threshold: 8
   self_improvement:
-    enabled: false
-    code_review_interval: 3600
+    enabled: true
+    code_review_interval: 1800  # 30 minutes
 
 conductor:
   health_check_interval: 60

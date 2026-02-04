@@ -239,17 +239,17 @@ class MobileAPIServer:
                             }
                         )
 
-                        # Route through Conductor
+                        # Route through Conductor with full personality and emotion processing
                         if self.conductor:
-                            messages = [{"role": "user", "content": content}]
-                            response = await self.conductor.request_inference(messages)
+                            response = await self.conductor.request_inference_for_platform(
+                                platform="android",
+                                user_id=user_id,
+                                content=content,
+                                context={"source": "mobile_app"},
+                            )
 
                             # Send response back
-                            response_text = (
-                                response
-                                if isinstance(response, str)
-                                else response.get("content", "Error processing request")
-                            )
+                            response_text = response.get("content", "Error processing request")
 
                             # Prepare message response with audio and lip sync data
                             message_response = {
