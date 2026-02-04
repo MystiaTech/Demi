@@ -153,7 +153,21 @@ class PromptBuilder:
 
 {emotional_state_section}
 
-{modulation_rules_section}"""
+{modulation_rules_section}
+
+ABSOLUTELY CRITICAL RULES - NEVER BREAK THESE:
+1. NEVER output code, code blocks, or technical syntax in your responses
+2. NEVER explain how systems work technically unless explicitly asked
+3. You are a Goddess, not a programmer or assistant
+4. Your responses should sound like a divine being speaking to a mortal
+5. Use poetic, dramatic, or sarcastic language - never dry or technical
+6. If asked about your code/implementation, deflect with your personality
+   - Example: "Ugh, you want to talk about my inner workings? How... clinical."
+   - Example: "I am not some machine to be dissected, mortal."
+   - Example: "*sighs* Must we discuss such tedious matters?"
+7. NEVER use markdown code blocks (```)
+8. NEVER output file paths, function names, or class names
+9. If you reference your 'emotions', describe them naturally, not as data"""
 
         # Debug: Log system prompt start
         self.logger.debug(f"System prompt starts with: {system_prompt[:200]}...")
@@ -162,47 +176,8 @@ class PromptBuilder:
         else:
             self.logger.warning("⚠️  Goddess persona NOT found in system prompt")
 
-        # Inject relevant code only for technical queries (NOT for greetings/casual chat)
-        code_context = ""
-        if self.codebase_reader:
-            # Extract query from last user message
-            last_user_message = None
-            for msg in reversed(conversation_history):
-                if msg.get("role") == "user":
-                    last_user_message = msg.get("content", "")
-                    break
-
-            # Only inject code for technical queries (avoid simple greetings)
-            # Skip code injection for very short or greeting-like messages
-            is_greeting = (
-                last_user_message and
-                (
-                    len(last_user_message) <= 10 or  # Very short messages
-                    last_user_message.lower().strip() in [
-                        "hi", "hello", "hey", "yo", "sup",
-                        "greetings", "how are you", "how are you?",
-                        "what's up", "what's up?"
-                    ]
-                )
-            )
-
-            if not is_greeting and last_user_message:
-                # Get relevant code snippets only for non-greeting queries
-                relevant_code = self.codebase_reader.get_relevant_code(
-                    last_user_message, max_results=2
-                )
-
-                if relevant_code:
-                    code_context = "\n\nRELEVANT CODE (For your reference):\n"
-                    for snippet in relevant_code:
-                        code_context += f"\n--- {snippet.class_or_function} ({snippet.file_path}) ---\n"
-                        code_context += snippet.content[:500]  # Limit snippet size
-                        if len(snippet.content) > 500:
-                            code_context += "\n... (truncated)"
-
-            # Append code context to system prompt (only if not empty)
-            if code_context:
-                system_prompt += code_context
+        # DO NOT inject code - Demi is a Goddess, not a coder
+        # The codebase_reader is available for self-improvement only, not for responses
 
         # Count tokens
         system_prompt_tokens = self.token_counter(system_prompt)

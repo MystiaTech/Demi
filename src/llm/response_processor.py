@@ -483,6 +483,9 @@ class ResponseProcessor:
 
         # Format actions more clearly
         text = self._format_actions(text)
+        
+        # Remove code blocks that shouldn't be there
+        text = self._remove_code_blocks(text)
 
         # Strip again after token removal
         text = text.strip()
@@ -548,6 +551,57 @@ class ResponseProcessor:
                 formatted_lines.append(line)
         
         return '\n'.join(formatted_lines)
+    
+    def _remove_code_blocks(self, text: str) -> str:
+        """
+        Remove code blocks and technical content from responses.
+        
+        Demi is a Goddess, not a coding assistant. This removes:
+        - Markdown code blocks (```code```)
+        - File paths
+        - Function/class definitions
+        - Technical explanations
+        
+        Args:
+            text: Text potentially containing code
+            
+        Returns:
+            Clean text without code
+        """
+        import re
+        
+        # Remove markdown code blocks
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        
+        # Remove inline code
+        text = re.sub(r'`[^`]+`', '', text)
+        
+        # Remove file paths (common patterns)
+        text = re.sub(r'[\w/]+\.(py|js|ts|java|cpp|c|h|go|rs|rb):\d+', '', text)
+        text = re.sub(r'src/[\w/]+\.py', '', text)
+        
+        # Remove function/class definitions
+        text = re.sub(r'def \w+\([^)]*\):', '', text)
+        text = re.sub(r'class \w+[^:]*:', '', text)
+        
+        # Remove lines that are clearly code (starting with common code patterns)
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Skip lines that look like code
+            if any(stripped.startswith(prefix) for prefix in [
+                'import ', 'from ', 'def ', 'class ', 'return ',
+                'if __name__', '# ', '// ', '/*', '* ', 'self.',
+                '@', '    ', '\t',  # Indented lines
+            ]):
+                continue
+            # Skip lines with assignment patterns that look like code
+            if re.match(r'^\w+\s*=\s*', stripped):
+                continue
+            cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines)
 
     def _count_tokens(self, text: str) -> int:
         """
