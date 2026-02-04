@@ -8,6 +8,12 @@ from src.emotion.models import EmotionalState
 from src.emotion.decay import DecaySystem
 from src.emotion.interactions import InteractionType
 
+try:
+    from src.monitoring.metrics import get_emotion_metrics
+    HAS_METRICS = True
+except ImportError:
+    HAS_METRICS = False
+
 
 class EmotionPersistence:
     """
@@ -129,7 +135,7 @@ class EmotionPersistence:
 
             cursor.execute(
                 """
-                INSERT INTO emotional_state 
+                INSERT INTO emotional_state
                 (timestamp, loneliness, excitement, frustration, jealousy, vulnerability,
                  confidence, curiosity, affection, defensiveness, momentum_json, notes)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -152,6 +158,19 @@ class EmotionPersistence:
 
             conn.commit()
             conn.close()
+
+            # Record emotion metrics if available
+            if HAS_METRICS:
+                try:
+                    emotion_metrics = get_emotion_metrics()
+                    emotion_metrics.record_emotion_state(
+                        state.get_all_emotions()
+                    )
+                except Exception as e:
+                    if self.logger:
+                        self.logger.debug(f"Failed to record emotion metrics: {e}")
+                    # Silently continue if metrics recording fails
+
             return True
         except Exception as e:
             print(f"Failed to save emotional state: {e}")

@@ -18,6 +18,8 @@ from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
 from src.models.rambles import Ramble, RambleStore
 from src.autonomy.coordinator import AutonomyCoordinator
+from src.monitoring.metrics import get_platform_metrics, get_conversation_metrics
+import time
 
 # Voice integration (optional)
 try:
@@ -432,6 +434,9 @@ class DiscordBot(BasePlatform):
                     return
 
                 try:
+                    # Track response time
+                    request_start = time.time()
+
                     # Show typing indicator (improves UX)
                     async with message.channel.typing():
                         # Route through Conductor with emotion state and personality modulation
@@ -441,6 +446,9 @@ class DiscordBot(BasePlatform):
                             content=content,
                             context={"guild_id": guild_id, "channel_id": channel_id},
                         )
+
+                    # Calculate response time
+                    response_time_ms = (time.time() - request_start) * 1000
 
                     # Extract and send plain text response
                     try:
@@ -452,6 +460,25 @@ class DiscordBot(BasePlatform):
 
                         # Send as plain message (not a reply) to avoid reply UI
                         await message.channel.send(response_text)
+
+                        # Record success metrics
+                        platform_metrics = get_platform_metrics()
+                        platform_metrics.record_message(
+                            platform="discord",
+                            response_time_ms=response_time_ms,
+                            message_length=len(response_text),
+                            success=True
+                        )
+
+                        # Record conversation metrics
+                        conv_metrics = get_conversation_metrics()
+                        conv_metrics.record_conversation(
+                            user_message_length=len(content),
+                            bot_response_length=len(response_text),
+                            conversation_turn=1,  # Note: simplified, should track per user
+                            sentiment_score=0.5  # Note: could calculate from emotion state
+                        )
+
                     except Exception as send_error:
                         self.logger.warning(
                             f"Failed to send response: {send_error}",
@@ -472,6 +499,16 @@ class DiscordBot(BasePlatform):
                             )
                             await message.channel.send("Oops, something went wrong.")
 
+                            # Record failure metrics
+                            platform_metrics = get_platform_metrics()
+                            platform_metrics.record_message(
+                                platform="discord",
+                                response_time_ms=response_time_ms,
+                                message_length=0,
+                                success=False,
+                                error=str(fallback_error)
+                            )
+
                     self.logger.info(
                         "Discord response sent",
                         user_id=user_id,
@@ -486,6 +523,18 @@ class DiscordBot(BasePlatform):
                         error_type=type(e).__name__,
                     )
                     print(f"❌ Error handling message: {str(e)}")
+
+                    # Record error metrics
+                    response_time_ms = (time.time() - request_start) * 1000
+                    platform_metrics = get_platform_metrics()
+                    platform_metrics.record_message(
+                        platform="discord",
+                        response_time_ms=response_time_ms,
+                        message_length=len(content),
+                        success=False,
+                        error=str(e)
+                    )
+
                     # Send error message to user
                     error_msg = "Oops, something went wrong. Try again in a moment."
                     await message.channel.send(error_msg)
@@ -722,11 +771,28 @@ class DiscordBot(BasePlatform):
             status = "healthy" if is_ready else "unhealthy"
             error_message = None if is_ready else "Bot not connected to Discord"
 
+            # Record Discord bot metrics
+            from src.monitoring.metrics import get_discord_metrics
+            discord_metrics = get_discord_metrics()
+
+            # Get bot latency and stats
+            latency_ms = (self.bot.latency * 1000) if self.bot and is_ready else 0.0
+            guild_count = len(self.bot.guilds) if self.bot else 0
+            # Rough estimate of connected users
+            connected_users = sum(len(guild.members) for guild in self.bot.guilds) if self.bot else 0
+
+            discord_metrics.record_bot_status(
+                online=is_ready,
+                latency_ms=latency_ms,
+                guild_count=guild_count,
+                connected_users=connected_users
+            )
+
             self.logger.debug("Discord health check", status=status, is_ready=is_ready)
 
             return PluginHealth(
                 status=status,
-                response_time_ms=0.0,  # Discord doesn't provide latency in is_ready()
+                response_time_ms=latency_ms,
                 last_check=datetime.now(),
                 error_message=error_message,
             )

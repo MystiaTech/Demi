@@ -11,6 +11,7 @@ import time
 from typing import Optional, List, Dict
 from src.llm.config import LLMConfig
 from src.core.logger import DemiLogger
+from src.monitoring.metrics import get_llm_metrics
 
 
 class InferenceError(Exception):
@@ -680,17 +681,40 @@ class UnifiedLLMInference:
         Raises:
             InferenceError: If both providers are unavailable
         """
+        start_time = time.time()
+        response_text = None
+        error_type = None
+
         # Try Ollama first
         try:
             if await self.ollama.health_check():
                 self._active_provider = "ollama"
                 self.logger.debug("Using Ollama provider")
-                return await self.ollama.chat(
+                response_text = await self.ollama.chat(
                     messages, max_context_tokens, emotional_state_before
                 )
+                # Record success metrics
+                if response_text:
+                    response_time_ms = (time.time() - start_time) * 1000
+                    tokens_generated = self._count_tokens(response_text)
+                    prompt_tokens = sum(self._count_tokens(m["content"]) for m in messages)
+
+                    metrics = get_llm_metrics()
+                    metrics.record_inference(
+                        response_time_ms=response_time_ms,
+                        tokens_generated=tokens_generated,
+                        inference_latency_ms=response_time_ms,
+                        prompt_tokens=prompt_tokens,
+                        model="ollama"
+                    )
+                return response_text
         except InferenceError as e:
             self.logger.warning(f"Ollama inference failed: {e}")
+            error_type = "ollama_failed"
             if not self.config.enable_lmstudio_fallback:
+                # Record error
+                metrics = get_llm_metrics()
+                metrics.record_error("ollama_unavailable", model="ollama")
                 raise
 
         # Fall back to LMStudio if enabled
@@ -699,16 +723,38 @@ class UnifiedLLMInference:
                 if await self.lmstudio.health_check():
                     self._active_provider = "lmstudio"
                     self.logger.info("Switched to LMStudio provider")
-                    return await self.lmstudio.chat(
+                    response_text = await self.lmstudio.chat(
                         messages, max_context_tokens, emotional_state_before
                     )
+                    # Record success metrics
+                    if response_text:
+                        response_time_ms = (time.time() - start_time) * 1000
+                        tokens_generated = self._count_tokens(response_text)
+                        prompt_tokens = sum(self._count_tokens(m["content"]) for m in messages)
+
+                        metrics = get_llm_metrics()
+                        metrics.record_inference(
+                            response_time_ms=response_time_ms,
+                            tokens_generated=tokens_generated,
+                            inference_latency_ms=response_time_ms,
+                            prompt_tokens=prompt_tokens,
+                            model="lmstudio"
+                        )
+                    return response_text
             except InferenceError as e:
                 self.logger.error(f"LMStudio inference also failed: {e}")
+                # Record error for both providers
+                metrics = get_llm_metrics()
+                metrics.record_error("lmstudio_failed", model="lmstudio")
+                metrics.record_error("both_providers_failed", model="unified")
                 raise InferenceError(
                     "Both Ollama and LMStudio providers failed. "
                     "Please ensure at least one is running."
                 )
 
+        # Record error if no provider available
+        metrics = get_llm_metrics()
+        metrics.record_error("no_provider_available", model="unified")
         raise InferenceError(
             "Ollama provider failed and fallback is disabled. "
             "Please ensure Ollama is running or enable LMStudio fallback."

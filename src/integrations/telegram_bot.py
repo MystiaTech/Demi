@@ -7,6 +7,7 @@ Integrates with Conductor's LLM pipeline and emotion system.
 import os
 import asyncio
 import uuid
+import time
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
@@ -40,6 +41,7 @@ from src.integrations.telegram_formatters import (
     format_start_message,
     should_generate_telegram_ramble,
 )
+from src.monitoring.metrics import get_platform_metrics, get_conversation_metrics
 
 
 class TelegramRateLimiter:
@@ -488,6 +490,7 @@ class TelegramBot(BasePlatform):
 
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle regular messages."""
+        request_start = time.time()
         try:
             # Check if this is a private message or mention/reply in group
             if update.message.chat.type == "private":
@@ -528,8 +531,39 @@ class TelegramBot(BasePlatform):
             message = format_telegram_response(response, user_name)
             await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+            # Calculate response time and record metrics
+            response_time_ms = (time.time() - request_start) * 1000
+            platform_metrics = get_platform_metrics()
+            platform_metrics.record_message(
+                platform="telegram",
+                response_time_ms=response_time_ms,
+                message_length=len(message),
+                success=True
+            )
+
+            # Record conversation metrics
+            conv_metrics = get_conversation_metrics()
+            conv_metrics.record_conversation(
+                user_message_length=len(content),
+                bot_response_length=len(message),
+                conversation_turn=1,  # Note: simplified, should track per user
+                sentiment_score=0.5  # Note: could calculate from emotion state
+            )
+
         except Exception as e:
             self._logger.error(f"Error handling message: {e}")
+
+            # Record error metrics
+            response_time_ms = (time.time() - request_start) * 1000
+            platform_metrics = get_platform_metrics()
+            platform_metrics.record_message(
+                platform="telegram",
+                response_time_ms=response_time_ms,
+                message_length=0,
+                success=False,
+                error=str(e)
+            )
+
             await update.message.reply_text("An error occurred. Please try again.")
 
     async def _handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
