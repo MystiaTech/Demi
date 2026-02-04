@@ -70,6 +70,11 @@ class DashboardServer:
             version="1.0.0",
         )
 
+        # Suppress Uvicorn access logging for dashboard to reduce noise
+        import logging
+        uvicorn_access_logger = logging.getLogger("uvicorn.access")
+        uvicorn_access_logger.setLevel(logging.WARNING)
+
         # Add CORS middleware
         self.app.add_middleware(
             CORSMiddleware,
