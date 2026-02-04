@@ -643,11 +643,18 @@ class DemiDashboard {
 
     updatePlatforms(platforms) {
         const container = document.getElementById('platform-grid');
-        if (!container || !platforms) return;
+        if (!container) return;
+
+        // Default platforms that should always be shown
+        const defaultPlatforms = ['discord', 'telegram', 'llm'];
+        const allPlatforms = defaultPlatforms.map(name => ({
+            name,
+            info: platforms[name] || { status: 'unknown', error: 'Not available' }
+        }));
 
         container.innerHTML = '';
 
-        Object.entries(platforms).forEach(([name, info]) => {
+        allPlatforms.forEach(({ name, info }) => {
             const div = document.createElement('div');
             div.className = `platform-item ${info.status}`;
             div.innerHTML = `
@@ -657,10 +664,18 @@ class DemiDashboard {
             container.appendChild(div);
         });
 
-        // If no platforms, show placeholder
-        if (Object.keys(platforms).length === 0) {
-            container.innerHTML = '<div class="platform-item unknown"><span class="platform-name">No Platforms</span><span class="platform-status">--</span></div>';
-        }
+        // Add any other platforms that exist but aren't in defaults
+        Object.entries(platforms).forEach(([name, info]) => {
+            if (!defaultPlatforms.includes(name)) {
+                const div = document.createElement('div');
+                div.className = `platform-item ${info.status}`;
+                div.innerHTML = `
+                    <span class="platform-name">${this.capitalizeFirst(name)}</span>
+                    <span class="platform-status">${info.status}</span>
+                `;
+                container.appendChild(div);
+            }
+        });
     }
 
     updateAlerts(alerts) {
