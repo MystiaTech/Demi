@@ -423,6 +423,21 @@ class ResponseProcessor:
                 self.logger.debug(f"Removed name prefix: {prefix}")
                 break
 
+        # Remove internal emotion state metadata lines that shouldn't be visible
+        # (e.g., "(Jealousy: 60%, Loneliness: 55%, Affection: 65%)")
+        lines = text.split('\n')
+        filtered_lines = []
+        for line in lines:
+            # Skip lines that are just emotion state metadata
+            if (line.strip().startswith('(') and line.strip().endswith(')') and
+                any(emotion in line for emotion in ['Jealousy', 'Loneliness', 'Affection', 'Excitement',
+                                                     'Frustration', 'Confidence', 'Curiosity', 'Vulnerability',
+                                                     'Defensiveness']) and '%' in line):
+                self.logger.debug(f"Removed emotion metadata line: {line}")
+                continue
+            filtered_lines.append(line)
+        text = '\n'.join(filtered_lines).strip()
+
         # Remove special tokens
         for token in self.SPECIAL_TOKENS:
             text = text.replace(token, " ")  # Replace with space to avoid word merging
