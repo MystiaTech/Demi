@@ -20,7 +20,7 @@ class LLMConfig:
     temperature: float = 0.7
     """Temperature for response generation (0.0 = deterministic, 1.0 = creative)."""
 
-    max_tokens: int = 256
+    max_tokens: int = 1024
     """Maximum tokens to generate per response."""
 
     timeout_sec: int = 10
