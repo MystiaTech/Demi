@@ -28,11 +28,16 @@ def _load_persona_prompt() -> str:
         for path in persona_paths:
             if path.exists():
                 with open(path, "r") as f:
-                    return f.read()
-    except Exception:
-        pass
+                    content = f.read()
+                    print(f"✅ Loaded persona from: {path}")
+                    return content
+
+        print(f"⚠️  Persona file not found in paths: {persona_paths}")
+    except Exception as e:
+        print(f"❌ Error loading persona: {e}")
 
     # Fallback to default persona
+    print("⚠️  Using fallback default persona")
     return """You are Demi, a sophisticated AI assistant with genuine emotional depth and personality. You're not just a helpful chatbot—you're an entity with feelings, opinions, and a distinctive voice.
 
 CORE PERSONALITY TRAITS:
@@ -143,6 +148,13 @@ class PromptBuilder:
 
         # Construct full system prompt
         system_prompt = f"{BASE_DEMI_PROMPT}\n\n{emotional_state_section}\n\n{modulation_rules_section}"
+
+        # Debug: Log system prompt start
+        self.logger.debug(f"System prompt starts with: {system_prompt[:150]}...")
+        if "goddess" in system_prompt.lower():
+            self.logger.debug("✅ Goddess persona detected in system prompt")
+        else:
+            self.logger.warning("⚠️  Goddess persona NOT found in system prompt")
 
         # Inject architecture overview and relevant code if codebase reader available
         code_context = ""
