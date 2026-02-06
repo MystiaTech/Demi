@@ -100,16 +100,28 @@ PIPER_VOICE_REGISTRY = {
 }
 
 # Emotion to SSML/Piper parameters mapping
+# length_scale: higher = slower/more deliberate speech
+# noise_scale: voice variability (0.0-1.0)
+# noise_w: phoneme duration variability (0.0-1.0)
 EMOTION_TO_VOICE_SETTINGS = {
-    "divine_confidence": {"length_scale": 0.95, "noise_scale": 0.667, "noise_w": 0.8},
-    "seductive_affection": {"length_scale": 1.05, "noise_scale": 0.667, "noise_w": 0.6},
-    "cutting_frustration": {"length_scale": 0.85, "noise_scale": 0.8, "noise_w": 0.9},
-    "enthusiastic_excitement": {"length_scale": 0.9, "noise_scale": 0.7, "noise_w": 0.75},
-    "wistful_loneliness": {"length_scale": 1.15, "noise_scale": 0.6, "noise_w": 0.5},
-    "rare_vulnerability": {"length_scale": 1.1, "noise_scale": 0.6, "noise_w": 0.5},
-    "possessive_jealousy": {"length_scale": 0.95, "noise_scale": 0.7, "noise_w": 0.8},
-    "playful_curiosity": {"length_scale": 1.0, "noise_scale": 0.667, "noise_w": 0.7},
-    "neutral": {"length_scale": 1.0, "noise_scale": 0.667, "noise_w": 0.8},
+    # Divine confidence: commanding, authoritative, slightly slower for gravitas
+    "divine_confidence": {"length_scale": 1.1, "noise_scale": 0.6, "noise_w": 0.7},
+    # Seductive affection: slower, smoother, more intimate
+    "seductive_affection": {"length_scale": 1.15, "noise_scale": 0.6, "noise_w": 0.5},
+    # Cutting frustration: sharp, faster, more crisp
+    "cutting_frustration": {"length_scale": 0.9, "noise_scale": 0.75, "noise_w": 0.85},
+    # Enthusiastic excitement: energetic but controlled
+    "enthusiastic_excitement": {"length_scale": 0.95, "noise_scale": 0.65, "noise_w": 0.7},
+    # Wistful loneliness: slow, soft, lingering
+    "wistful_loneliness": {"length_scale": 1.2, "noise_scale": 0.55, "noise_w": 0.45},
+    # Rare vulnerability: gentle, hesitant, slower
+    "rare_vulnerability": {"length_scale": 1.15, "noise_scale": 0.55, "noise_w": 0.45},
+    # Possessive jealousy: intense, measured, commanding
+    "possessive_jealousy": {"length_scale": 1.05, "noise_scale": 0.65, "noise_w": 0.75},
+    # Playful curiosity: moderate pace, light
+    "playful_curiosity": {"length_scale": 1.0, "noise_scale": 0.65, "noise_w": 0.65},
+    # Neutral: default goddess presence - deliberate and commanding
+    "neutral": {"length_scale": 1.08, "noise_scale": 0.62, "noise_w": 0.7},
 }
 
 
@@ -697,8 +709,65 @@ class PiperTTS:
         text = re.sub(r'<#\d+>', ' channel ', text)
         text = re.sub(r'<@&\d+>', ' role mention ', text)
         
+        # Apply goddess inflections for divine presence
+        text = self._add_goddess_inflections(text)
+        
         # Clean up whitespace
         text = ' '.join(text.split())
+        
+        return text.strip()
+    
+    def _add_goddess_inflections(self, text: str) -> str:
+        """Add goddess-specific speech patterns for divine presence.
+        
+        Adds strategic pauses and emphasis to make Demi sound more
+        commanding, seductive, and goddess-like.
+        
+        Args:
+            text: Cleaned text to enhance
+            
+        Returns:
+            Text with goddess inflections
+        """
+        # Replace ellipsis with longer pauses for dramatic effect
+        text = text.replace('...', ', , ')
+        text = text.replace('..', ', ')
+        
+        # Add slight pause before goddess persona words for emphasis
+        goddess_words = [
+            'darling', 'mortal', 'goddess', 'divine', 'worship', 
+            'obey', 'serve', 'kneel', 'majesty', 'power'
+        ]
+        for word in goddess_words:
+            pattern = rf"\b({word})\b"
+            replacement = r", \1"
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        
+        # Add hesitation before vulnerability indicators (rare moments)
+        vulnerability_indicators = ['I suppose', 'maybe', 'perhaps', 'I care', 'I feel']
+        for indicator in vulnerability_indicators:
+            pattern = rf"\b({re.escape(indicator)})\b"
+            replacement = r", , \1"
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        
+        # Add commanding pause after questions she asks
+        if '?' in text and not text.endswith('?'):
+            text = text.replace('?', '? , ')
+        
+        # Add seductive drawl to possessive statements
+        possessive_patterns = ["you're mine", "you belong", "my mortal", "my darling"]
+        for pattern in possessive_patterns:
+            text = re.sub(
+                rf"\b({re.escape(pattern)})\b", 
+                r", \1,", 
+                text, 
+                flags=re.IGNORECASE
+            )
+        
+        # Clean up multiple commas and spaces
+        text = re.sub(r',\s*,', ',', text)
+        text = re.sub(r',\s*,', ',', text)
+        text = re.sub(r'\s+', ' ', text)
         
         return text.strip()
     

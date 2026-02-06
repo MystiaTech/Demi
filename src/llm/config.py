@@ -20,7 +20,7 @@ class LLMConfig:
     temperature: float = 0.7
     """Temperature for response generation (0.0 = deterministic, 1.0 = creative)."""
 
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     """Maximum tokens to generate per response."""
 
     timeout_sec: int = 10
@@ -75,7 +75,7 @@ class LLMConfig:
         return cls(
             model_name=ollama_settings.get("model", "llama3.2:1b"),
             temperature=ollama_settings.get("temperature", 0.7),
-            max_tokens=ollama_settings.get("context_window", 256),
+            max_tokens=ollama_settings.get("max_tokens", 2048),
             timeout_sec=ollama_settings.get("timeout", 30),
             ollama_base_url=ollama_settings.get(
                 "base_url", "http://localhost:11434"

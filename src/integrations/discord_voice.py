@@ -920,12 +920,7 @@ class DiscordVoiceClient:
                 # Record response for loop detection
                 if guild_id:
                     self.safety_guard.record_demi_response(guild_id, text)
-            
-            # Cleanup
-            try:
-                os.remove(tmp_path)
-            except:
-                pass
+                # Note: Cleanup happens in _on_playback_finished callback
                 
         except Exception as e:
             self.logger.error(f"TTS error: {e}")

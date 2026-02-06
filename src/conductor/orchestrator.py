@@ -45,6 +45,14 @@ from src.emotion.models import EmotionalState
 from src.emotion.decay import DecaySystem
 from src.monitoring.dashboard_server import DashboardServer
 from src.mobile.api import MobileAPIServer
+from src.evolution import (
+    ErrorAnalyzer,
+    ConversationQualityAnalyzer,
+    SelfCritique,
+    CritiqueResult,
+    SelfRewarder,
+    ChangeTracker,
+)
 
 logger = get_logger()
 
@@ -132,6 +140,24 @@ class Conductor:
             logger=self._logger,
             db_session=db_session,
             interaction_handler=interaction_handler,
+        )
+
+        # Self-evolution systems (Phase 2)
+        self.error_analyzer = ErrorAnalyzer()
+        self.quality_analyzer = ConversationQualityAnalyzer()
+        self.self_critique = SelfCritique()
+        self.self_rewarder = SelfRewarder()
+        self.change_tracker = ChangeTracker()
+        self._logger.info("Self-evolution systems initialized")
+        
+        # Log startup as a system change
+        self.change_tracker.record_change(
+            category="system",
+            files_modified=[],
+            description="Demi system startup",
+            rationale="Regular system initialization",
+            auto_commit=False,
+            auto_approve=True,
         )
 
         # Autonomy coordinator (initialized after other systems are ready)
@@ -602,6 +628,65 @@ class Conductor:
                 
                 # Reset interaction timer (user just interacted)
                 self._last_interaction_time = time.time()
+                
+                # ===== SELF-EVOLUTION ANALYSIS =====
+                # Run error analysis on response
+                errors = self.error_analyzer.analyze_conversation(
+                    user_message=content,
+                    demi_response=response_content,
+                    emotional_state=emotion_state_after.to_dict() if hasattr(emotion_state_after, 'to_dict') else emotion_state_after,
+                )
+                if errors:
+                    self._logger.info(
+                        f"Detected {len(errors)} issues in response",
+                        error_categories=[e.category.value for e in errors]
+                    )
+                
+                # Analyze conversation quality
+                quality = self.quality_analyzer.analyze_response(
+                    response=response_content,
+                    user_message=content,
+                    emotional_state=emotion_state_after.to_dict() if hasattr(emotion_state_after, 'to_dict') else emotion_state_after,
+                    conversation_id=context.get("conversation_id", "") if context else "",
+                )
+                self._logger.debug(
+                    "Quality metrics",
+                    overall=round(quality.overall_score, 2),
+                    persona=round(quality.persona_consistency, 2),
+                    emotional=round(quality.emotional_appropriateness, 2),
+                )
+                
+                # Self-critique for high-value learning
+                critique = self.self_critique.critique_response(
+                    response=response_content,
+                    user_message=content,
+                    emotional_state=emotion_state_after if hasattr(emotion_state_after, 'to_dict') else emotion_state,
+                    generate_revision=False,  # Don't regenerate, just analyze
+                )
+                if critique.issues:
+                    self._logger.debug(
+                        "Self-critique identified issues",
+                        issues_count=len(critique.issues),
+                        avg_score=round((critique.consistency_score + 
+                                        critique.emotional_alignment_score +
+                                        critique.appropriateness_score +
+                                        critique.engagement_score) / 4, 2)
+                    )
+                
+                # Generate reward signal
+                reward = self.self_rewarder.compute_reward(
+                    response=response_content,
+                    user_message=content,
+                    emotional_state=emotion_state_after if hasattr(emotion_state_after, 'to_dict') else emotion_state,
+                    conversation_id=context.get("conversation_id", "") if context else "",
+                )
+                self._logger.debug(
+                    "Reward signal computed",
+                    final_score=round(reward.final_score, 2),
+                    rule_score=round(reward.rule_based_score, 2),
+                )
+                # ===== END SELF-EVOLUTION ANALYSIS =====
+                
             else:
                 # Fallback: just get default emotion state
                 emotion_state_after = emotion_state.to_dict()
@@ -1158,6 +1243,74 @@ class Conductor:
         except Exception as e:
             self._logger.error(f"Failed to send Telegram message: {e}")
             return False
+
+    def get_self_evolution_stats(self) -> Dict[str, Any]:
+        """
+        Get self-evolution system statistics.
+        
+        Returns:
+            Dictionary with error, quality, critique, reward, and change stats
+        """
+        try:
+            return {
+                "error_analysis": self.error_analyzer.get_error_stats(),
+                "conversation_quality": self.quality_analyzer.get_quality_trends(days=7),
+                "self_critique": self.self_critique.get_critique_stats(),
+                "self_reward": self.self_rewarder.get_reward_stats(),
+                "changes": self.change_tracker.get_change_stats(),
+            }
+        except Exception as e:
+            self._logger.error(f"Failed to get self-evolution stats: {e}")
+            return {"error": str(e)}
+    
+    def record_change(
+        self,
+        category: str,
+        files_modified: List[str],
+        description: str,
+        rationale: str,
+        before_metrics: Optional[Dict[str, float]] = None,
+        after_metrics: Optional[Dict[str, float]] = None,
+        auto_commit: bool = True,
+        auto_approve: bool = False,
+    ):
+        """
+        Record a change made to Demi's codebase.
+        
+        Args:
+            category: Type of change (error_fix, improvement, etc.)
+            files_modified: List of files changed
+            description: What was changed
+            rationale: Why it was changed
+            before_metrics: Metrics before change
+            after_metrics: Metrics after change
+            auto_commit: Whether to auto-commit to git
+            auto_approve: Whether to auto-approve
+        """
+        try:
+            change = self.change_tracker.record_change(
+                category=category,
+                files_modified=files_modified,
+                description=description,
+                rationale=rationale,
+                before_metrics=before_metrics,
+                after_metrics=after_metrics,
+                auto_commit=auto_commit,
+                auto_approve=auto_approve,
+            )
+            
+            self._logger.info(
+                f"Change recorded: {change.change_id}",
+                category=category,
+                committed=bool(change.git_commit_hash),
+                approved=change.approved,
+            )
+            
+            return change
+            
+        except Exception as e:
+            self._logger.error(f"Failed to record change: {e}")
+            return None
 
 
 # Global conductor instance
