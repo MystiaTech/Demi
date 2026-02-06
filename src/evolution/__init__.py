@@ -19,6 +19,8 @@ from src.evolution.conversation_quality import ConversationQualityAnalyzer, Qual
 from src.evolution.self_critique import SelfCritique, CritiqueResult
 from src.evolution.self_reward import SelfRewarder, RewardSignal
 from src.evolution.change_tracker import ChangeTracker, ChangeRecord
+from src.evolution.response_revisor import ResponseRevisor, RevisionSession, RevisionStrategy
+from src.evolution.pattern_learning import PatternLearningDB, LearnedPattern, MistakeEntry
 
 __all__ = [
     "ErrorAnalyzer",
@@ -32,4 +34,10 @@ __all__ = [
     "RewardSignal",
     "ChangeTracker",
     "ChangeRecord",
+    "ResponseRevisor",
+    "RevisionSession",
+    "RevisionStrategy",
+    "PatternLearningDB",
+    "LearnedPattern",
+    "MistakeEntry",
 ]

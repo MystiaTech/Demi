@@ -52,6 +52,8 @@ from src.evolution import (
     CritiqueResult,
     SelfRewarder,
     ChangeTracker,
+    ResponseRevisor,
+    PatternLearningDB,
 )
 
 logger = get_logger()
@@ -148,14 +150,16 @@ class Conductor:
         self.self_critique = SelfCritique()
         self.self_rewarder = SelfRewarder()
         self.change_tracker = ChangeTracker()
-        self._logger.info("Self-evolution systems initialized")
+        self.response_revisor = ResponseRevisor()
+        self.pattern_learning = PatternLearningDB()
+        self._logger.info("Self-evolution systems initialized (Phase 2a + 2b)")
         
         # Log startup as a system change
         self.change_tracker.record_change(
             category="system",
             files_modified=[],
-            description="Demi system startup",
-            rationale="Regular system initialization",
+            description="Demi system startup with Response Revision",
+            rationale="Phase 2b: Learning systems initialized",
             auto_commit=False,
             auto_approve=True,
         )
@@ -629,8 +633,42 @@ class Conductor:
                 # Reset interaction timer (user just interacted)
                 self._last_interaction_time = time.time()
                 
+                # ===== RESPONSE REVISION (Phase 2b) =====
+                # Try to improve the response before delivering
+                try:
+                    best_response, was_revised, improvement = self.response_revisor.get_best_response(
+                        original_response=response_content,
+                        user_message=content,
+                        emotional_state=emotion_state_after if hasattr(emotion_state_after, 'to_dict') else emotion_state,
+                        min_improvement=0.5,
+                    )
+                    
+                    if was_revised:
+                        old_response = response_content
+                        response_content = best_response
+                        
+                        self._logger.info(
+                            "Response improved by revision",
+                            improvement=round(improvement, 2),
+                            original_length=len(old_response),
+                            revised_length=len(response_content),
+                        )
+                        
+                        # Record this as a successful improvement
+                        self.change_tracker.record_change(
+                            category="quality_improvement",
+                            files_modified=[],
+                            description="Auto-revised response for better quality",
+                            rationale=f"Self-critique identified improvement opportunity (+{improvement:.1f} score)",
+                            auto_commit=False,
+                            auto_approve=True,
+                        )
+                except Exception as e:
+                    self._logger.warning(f"Response revision failed: {e}")
+                # ===== END RESPONSE REVISION =====
+                
                 # ===== SELF-EVOLUTION ANALYSIS =====
-                # Run error analysis on response
+                # Run error analysis on response (potentially revised)
                 errors = self.error_analyzer.analyze_conversation(
                     user_message=content,
                     demi_response=response_content,
@@ -1249,7 +1287,7 @@ class Conductor:
         Get self-evolution system statistics.
         
         Returns:
-            Dictionary with error, quality, critique, reward, and change stats
+            Dictionary with error, quality, critique, reward, changes, revision, and learning stats
         """
         try:
             return {
@@ -1258,6 +1296,8 @@ class Conductor:
                 "self_critique": self.self_critique.get_critique_stats(),
                 "self_reward": self.self_rewarder.get_reward_stats(),
                 "changes": self.change_tracker.get_change_stats(),
+                "response_revision": self.response_revisor.get_revision_stats(),
+                "pattern_learning": self.pattern_learning.get_learning_summary(),
             }
         except Exception as e:
             self._logger.error(f"Failed to get self-evolution stats: {e}")
