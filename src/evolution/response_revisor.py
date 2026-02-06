@@ -116,7 +116,7 @@ Wait, let me make this more engaging for the user.
 Add thoughtful questions, personal references, and invitation to continue.
 Show genuine interest in their response.
 """,
-        RevisionStrategy.CONSISENESS: """
+        RevisionStrategy.CONCISENESS: """
 Wait, let me make this more concise while keeping the key points.
 Remove filler words, get straight to the meaningful content.
 Every word should add value.
@@ -311,7 +311,7 @@ Make it unmistakably ME.
                     strategies.append(RevisionStrategy.EXPANSION)
             
             if "too verbose" in issue_lower or "rambling" in issue_lower:
-                if RevisionStrategy.CONSISENESS not in strategies:
+                if RevisionStrategy.CONCISENESS not in strategies:
                     strategies.append(RevisionStrategy.CONSISENESS)
             
             if "out of character" in issue_lower or "persona" in issue_lower:
@@ -429,7 +429,7 @@ Make it unmistakably ME.
             if 'you' not in text_lower:
                 text += " Tell me about your thoughts."
         
-        elif strategy == RevisionStrategy.CONSISENESS:
+        elif strategy == RevisionStrategy.CONCISENESS:
             # Remove filler phrases
             fillers = [' you know,', ' basically,', ' honestly,', ' I mean,']
             for filler in fillers:
