@@ -628,6 +628,10 @@ class UnifiedLLMInference:
         self._tokenizer = None
         self._tokenizer_attempted = False
 
+        # Request tracking for performance monitoring
+        self._active_requests = 0
+        self._total_requests = 0
+
         self.logger.info(
             f"Unified LLM inference initialized. "
             f"Ollama: {config.ollama_base_url}, "
@@ -697,17 +701,20 @@ class UnifiedLLMInference:
         Raises:
             InferenceError: If both providers are unavailable
         """
-        start_time = time.time()
-        response_text = None
-        error_type = None
+        self._active_requests += 1
+        self._total_requests += 1
 
-        # Check if user prefers LM Studio
-        prefer_lmstudio = os.getenv("PREFER_LMSTUDIO", "false").lower() in ("true", "1", "yes")
+        try:
+            start_time = time.time()
+            response_text = None
+            error_type = None
 
-        if prefer_lmstudio:
-            # Try LM Studio first if preferred
-            try:
-                if await self.lmstudio.health_check():
+            # Check if user prefers LM Studio
+            prefer_lmstudio = os.getenv("PREFER_LMSTUDIO", "false").lower() in ("true", "1", "yes")
+
+            if prefer_lmstudio:
+                # Try LM Studio first if preferred
+                try:
                     self._active_provider = "lmstudio"
                     self.logger.debug("Using LMStudio provider (preferred)")
                     response_text = await self.lmstudio.chat(
@@ -728,14 +735,13 @@ class UnifiedLLMInference:
                             model="lmstudio"
                         )
                     return response_text
-            except InferenceError as e:
-                self.logger.warning(f"LMStudio inference failed: {e}")
-                # Fall back to Ollama
-                pass
+                except InferenceError as e:
+                    self.logger.warning(f"LMStudio inference failed: {e}")
+                    # Fall back to Ollama
+                    pass
 
-            # Fall back to Ollama if LM Studio failed
-            try:
-                if await self.ollama.health_check():
+                # Fall back to Ollama if LM Studio failed
+                try:
                     self._active_provider = "ollama"
                     self.logger.info("Using Ollama as fallback")
                     response_text = await self.ollama.chat(
@@ -755,15 +761,14 @@ class UnifiedLLMInference:
                             model="ollama"
                         )
                     return response_text
-            except InferenceError as e:
-                self.logger.error(f"Both providers failed: {e}")
-                metrics = get_llm_metrics()
-                metrics.record_error("both_providers_failed", model="unified")
-                raise InferenceError("Both LMStudio and Ollama failed")
+                except InferenceError as e:
+                    self.logger.error(f"Both providers failed: {e}")
+                    metrics = get_llm_metrics()
+                    metrics.record_error("both_providers_failed", model="unified")
+                    raise InferenceError("Both LMStudio and Ollama failed")
 
-        # Default: Try Ollama first
-        try:
-            if await self.ollama.health_check():
+            # Default: Try Ollama first
+            try:
                 self._active_provider = "ollama"
                 self.logger.debug("Using Ollama provider")
                 response_text = await self.ollama.chat(
@@ -784,19 +789,18 @@ class UnifiedLLMInference:
                         model="ollama"
                     )
                 return response_text
-        except InferenceError as e:
-            self.logger.warning(f"Ollama inference failed: {e}")
-            error_type = "ollama_failed"
-            if not self.config.enable_lmstudio_fallback:
-                # Record error
-                metrics = get_llm_metrics()
-                metrics.record_error("ollama_unavailable", model="ollama")
-                raise
+            except InferenceError as e:
+                self.logger.warning(f"Ollama inference failed: {e}")
+                error_type = "ollama_failed"
+                if not self.config.enable_lmstudio_fallback:
+                    # Record error
+                    metrics = get_llm_metrics()
+                    metrics.record_error("ollama_unavailable", model="ollama")
+                    raise
 
-        # Fall back to LMStudio if enabled
-        if self.config.enable_lmstudio_fallback:
-            try:
-                if await self.lmstudio.health_check():
+            # Fall back to LMStudio if enabled
+            if self.config.enable_lmstudio_fallback:
+                try:
                     self._active_provider = "lmstudio"
                     self.logger.info("Switched to LMStudio provider")
                     response_text = await self.lmstudio.chat(
@@ -817,24 +821,34 @@ class UnifiedLLMInference:
                             model="lmstudio"
                         )
                     return response_text
-            except InferenceError as e:
-                self.logger.error(f"LMStudio inference also failed: {e}")
-                # Record error for both providers
-                metrics = get_llm_metrics()
-                metrics.record_error("lmstudio_failed", model="lmstudio")
-                metrics.record_error("both_providers_failed", model="unified")
-                raise InferenceError(
-                    "Both Ollama and LMStudio providers failed. "
-                    "Please ensure at least one is running."
-                )
+                except InferenceError as e:
+                    self.logger.error(f"LMStudio inference also failed: {e}")
+                    # Record error for both providers
+                    metrics = get_llm_metrics()
+                    metrics.record_error("lmstudio_failed", model="lmstudio")
+                    metrics.record_error("both_providers_failed", model="unified")
+                    raise InferenceError(
+                        "Both Ollama and LMStudio providers failed. "
+                        "Please ensure at least one is running."
+                    )
 
-        # Record error if no provider available
-        metrics = get_llm_metrics()
-        metrics.record_error("no_provider_available", model="unified")
-        raise InferenceError(
-            "Ollama provider failed and fallback is disabled. "
-            "Please ensure Ollama is running or enable LMStudio fallback."
-        )
+            # Record error if no provider available
+            metrics = get_llm_metrics()
+            metrics.record_error("no_provider_available", model="unified")
+            raise InferenceError(
+                "Ollama provider failed and fallback is disabled. "
+                "Please ensure Ollama is running or enable LMStudio fallback."
+            )
+        finally:
+            self._active_requests = max(0, self._active_requests - 1)
+
+    def get_active_requests(self) -> int:
+        """Return the number of currently active requests."""
+        return self._active_requests
+
+    def get_total_requests(self) -> int:
+        """Return the total number of requests processed."""
+        return self._total_requests
 
     def _count_tokens(self, text: str) -> int:
         """

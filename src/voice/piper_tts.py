@@ -38,10 +38,18 @@ from src.voice.emotion_voice import EmotionVoiceMapper, VoiceParameters
 # Try to import piper-tts and onnxruntime
 try:
     from piper import PiperVoice
-    from piper.download import find_voice
     PIPER_AVAILABLE = True
+    
+    # Try to import download utility (may not exist in all versions)
+    try:
+        from piper.download import find_voice
+    except ImportError:
+        find_voice = None
+        
 except ImportError:
     PIPER_AVAILABLE = False
+    PiperVoice = None
+    find_voice = None
 
 try:
     import onnxruntime as ort
@@ -592,24 +600,58 @@ class PiperTTS:
         """
         speaker_id = self.config.speaker_id if self.is_multi_speaker else None
         
-        # Collect audio chunks
-        audio_chunks = []
+        # Check which synthesize method is available
+        if hasattr(self.voice, 'synthesize_stream_raw'):
+            # Older Piper API - streaming
+            audio_chunks = []
+            for audio_bytes in self.voice.synthesize_stream_raw(
+                text,
+                speaker_id=speaker_id,
+                length_scale=params.get('length_scale', 1.0),
+                noise_scale=params.get('noise_scale', 0.667),
+                noise_w=params.get('noise_w', 0.8),
+            ):
+                audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
+                audio_chunks.append(audio_array)
+            
+            if audio_chunks:
+                return np.concatenate(audio_chunks)
+            else:
+                return np.array([], dtype=np.int16)
         
-        for audio_bytes in self.voice.synthesize_stream_raw(
-            text,
-            speaker_id=speaker_id,
-            length_scale=params.get('length_scale', 1.0),
-            noise_scale=params.get('noise_scale', 0.667),
-            noise_w=params.get('noise_w', 0.8),
-        ):
-            # Convert bytes to numpy array
-            audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-            audio_chunks.append(audio_array)
+        elif hasattr(self.voice, 'synthesize'):
+            # Newer Piper API - uses SynthesisConfig
+            try:
+                from piper.config import SynthesisConfig
+                
+                syn_config = SynthesisConfig(
+                    speaker_id=speaker_id,
+                    length_scale=params.get('length_scale', 1.0),
+                    noise_scale=params.get('noise_scale', 0.667),
+                    noise_w_scale=params.get('noise_w', 0.8),
+                )
+                
+                # synthesize returns Iterable[AudioChunk]
+                audio_chunks = []
+                for audio_chunk in self.voice.synthesize(text, syn_config=syn_config):
+                    # AudioChunk has audio_int16_array or audio_int16_bytes
+                    if hasattr(audio_chunk, 'audio_int16_array'):
+                        audio_chunks.append(audio_chunk.audio_int16_array)
+                    elif hasattr(audio_chunk, 'audio_int16_bytes'):
+                        audio_array = np.frombuffer(audio_chunk.audio_int16_bytes, dtype=np.int16)
+                        audio_chunks.append(audio_array)
+                
+                if audio_chunks:
+                    return np.concatenate(audio_chunks)
+                else:
+                    return np.array([], dtype=np.int16)
+                    
+            except ImportError:
+                # Fallback if SynthesisConfig not available
+                raise RuntimeError("SynthesisConfig not available in this Piper version")
         
-        if audio_chunks:
-            return np.concatenate(audio_chunks)
         else:
-            return np.array([], dtype=np.int16)
+            raise RuntimeError("PiperVoice has no synthesize method")
     
     def _clean_text_for_tts(self, text: str) -> str:
         """Clean text for better TTS output.

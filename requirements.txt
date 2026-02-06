@@ -5,7 +5,8 @@
 # (Ollama installed separately - see docs)
 
 # Discord Integration (Phase 05)
-discord.py>=2.6.0
+# Using py-cord instead of discord.py for voice receive (sinks) support
+py-cord[voice]>=2.6.1
 
 # Telegram Integration
 python-telegram-bot>=20.8

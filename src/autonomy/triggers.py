@@ -102,7 +102,7 @@ class TriggerManager:
         triggers.append(
             EmotionalTrigger(
                 trigger_type=TriggerType.LONELINESS,
-                threshold=thresholds.loneliness,
+                threshold=thresholds.loneliness,  # Now 0.6 (lowered from 0.7)
                 cooldown_minutes=cooldown,
                 priority=3,  # High priority when lonely
                 action_type="ramble",

@@ -377,6 +377,32 @@ class DashboardServer:
                 logger.error("LLM metrics endpoint error", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @self.app.get("/api/processing")
+        async def get_processing_state():
+            """Get current processing state (active requests, etc)."""
+            try:
+                # Get active requests from LLM inference
+                active_requests = 0
+                total_requests = 0
+                try:
+                    from src.conductor.orchestrator import get_conductor_instance
+                    conductor = get_conductor_instance()
+                    if conductor and conductor.llm:
+                        active_requests = conductor.llm.get_active_requests()
+                        total_requests = conductor.llm.get_total_requests()
+                except Exception:
+                    pass  # Conductor might not be initialized yet
+                
+                return {
+                    "active_requests": active_requests,
+                    "total_requests": total_requests,
+                    "is_processing": active_requests > 0,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Processing state endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
         @self.app.get("/api/metrics/platforms")
         async def get_platforms_metrics():
             """Get platform interaction statistics."""

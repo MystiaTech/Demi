@@ -51,6 +51,7 @@ class DemiDashboard {
             this.fetchEmotionHistory();
             this.fetchDiscordStatus();
             this.fetchVoiceMetrics();
+            this.fetchProcessingState();
         }, 5000);
 
         // Note: Real emotion data comes from WebSocket updates
@@ -693,23 +694,6 @@ class DemiDashboard {
             }
         }
 
-        // Determine processing state based on mental activity
-        const stateEl = document.getElementById('brain-state');
-        if (stateEl) {
-            let state, stateEmoji;
-            if (mentalActivity > 70) {
-                state = 'Actively Processing';
-                stateEmoji = '⚡';
-            } else if (mentalActivity > 50) {
-                state = 'Thinking';
-                stateEmoji = '💭';
-            } else {
-                state = 'Idle';
-                stateEmoji = '💤';
-            }
-            stateEl.textContent = stateEmoji + ' ' + state;
-        }
-
         // Update individual emotion bars
         this.updateEmotionBars(emotions);
     }
@@ -1169,6 +1153,31 @@ class DemiDashboard {
             }
         } catch (error) {
             console.debug('Failed to fetch voice metrics:', error);
+        }
+    }
+
+    async fetchProcessingState() {
+        try {
+            const response = await fetch('/api/processing');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateProcessingState(data);
+            }
+        } catch (error) {
+            console.debug('Failed to fetch processing state:', error);
+        }
+    }
+
+    updateProcessingState(data) {
+        const stateEl = document.getElementById('brain-state');
+        if (!stateEl) return;
+
+        if (data.is_processing) {
+            stateEl.textContent = '⚡ Actively Processing';
+            stateEl.style.color = '#f9ca24';
+        } else {
+            stateEl.textContent = '💤 Idle';
+            stateEl.style.color = '#74b9ff';
         }
     }
 

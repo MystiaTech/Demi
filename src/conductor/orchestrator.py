@@ -42,6 +42,7 @@ from src.emotion.persistence import EmotionPersistence
 from src.emotion.modulation import PersonalityModulator
 from src.emotion.interactions import InteractionHandler
 from src.emotion.models import EmotionalState
+from src.emotion.decay import DecaySystem
 from src.monitoring.dashboard_server import DashboardServer
 from src.mobile.api import MobileAPIServer
 
@@ -111,6 +112,8 @@ class Conductor:
             db_manager=self._db_manager, logger=self._logger
         )
         self.personality_modulator = PersonalityModulator(logger=self._logger)
+        self.decay_system = DecaySystem(tick_interval_seconds=300)  # 5 minute ticks
+        self._last_interaction_time = time.time()  # Track for emotion decay
 
         # Prompt builder with codebase context
         self.prompt_builder = PromptBuilder(
@@ -204,15 +207,40 @@ class Conductor:
             self._logger.info("Starting health monitor...")
             try:
                 platforms = [p.name for p in self._plugin_manager.list_plugins()]
+                
+                # Create health check function that calls plugin health checks
+                async def plugin_health_check(platform: str) -> None:
+                    """Run health check for a specific plugin."""
+                    plugin = self._plugin_manager.get_plugin(platform)
+                    if plugin and hasattr(plugin, 'health_check'):
+                        # Run the plugin's actual health check method
+                        if asyncio.iscoroutinefunction(plugin.health_check):
+                            health = await plugin.health_check()
+                        else:
+                            loop = asyncio.get_event_loop()
+                            health = await loop.run_in_executor(None, plugin.health_check)
+                        if hasattr(health, 'is_healthy') and not health.is_healthy():
+                            raise Exception(health.error_message or "Health check failed")
+                
                 health_task = asyncio.create_task(
                     self._health_monitor.health_check_loop(
-                        platforms, health_check_fn=None
+                        platforms, health_check_fn=plugin_health_check
                     )
                 )
                 self._background_tasks.append(health_task)
                 self._logger.info("Health monitor started")
             except Exception as e:
                 self._logger.error(f"health_monitor_startup_failed: {str(e)}")
+                return False
+
+            # Step 4.3: Start emotion decay background task
+            self._logger.info("Starting emotion decay system...")
+            try:
+                decay_task = asyncio.create_task(self._emotion_decay_loop())
+                self._background_tasks.append(decay_task)
+                self._logger.info("Emotion decay system started")
+            except Exception as e:
+                self._logger.error(f"emotion_decay_startup_failed: {str(e)}")
                 return False
 
             # Step 4.5: Initialize LLM and check Ollama health
@@ -283,8 +311,20 @@ class Conductor:
                             if metadata.name == "discord" and hasattr(plugin, "setup"):
                                 self._logger.info("Setting up Discord plugin with conductor...")
                                 try:
-                                    plugin.setup(self)
+                                    if asyncio.iscoroutinefunction(plugin.setup):
+                                        await plugin.setup(self)
+                                    else:
+                                        plugin.setup(self)
                                     self._logger.info("Discord plugin setup complete")
+                                    
+                                    # Start the Discord bot connection
+                                    if hasattr(plugin, "start"):
+                                        self._logger.info("Starting Discord bot connection...")
+                                        if asyncio.iscoroutinefunction(plugin.start):
+                                            await plugin.start()
+                                        else:
+                                            plugin.start()
+                                        self._logger.info("Discord bot connection started")
                                 except Exception as e:
                                     self._logger.warning(f"Discord plugin setup failed: {str(e)}")
                     except Exception as e:
@@ -530,19 +570,22 @@ class Conductor:
             )
 
             # Call inference with emotion state
+            inference_start = time.time()
             response_content = await self.llm.chat(
                 messages=messages, emotional_state_before=emotion_state.to_dict()
             )
+            inference_time = time.time() - inference_start
 
             # Process response and update emotions
-            if hasattr(self.llm, "response_processor") and self.llm.response_processor:
-                processed = self.llm.response_processor.process_response(
-                    response=response_content,
+            if self.response_processor:
+                processed = self.response_processor.process_response(
+                    response_text=response_content,
+                    inference_time_sec=inference_time,
                     emotional_state_before=emotion_state,
-                    user_message=content,
+                    interaction_type="successful_response",
                 )
                 emotion_state_after = processed.emotional_state_after
-                response_content = processed.cleaned_text
+                response_content = processed.text
 
                 # Log emotion changes
                 emotions_before = emotion_state.get_all_emotions()
@@ -556,11 +599,17 @@ class Conductor:
 
                 # Save the UPDATED emotional state, not the old one
                 self.emotion_persistence.save_state(processed.emotional_state_after)
+                
+                # Reset interaction timer (user just interacted)
+                self._last_interaction_time = time.time()
             else:
                 # Fallback: just get default emotion state
                 emotion_state_after = emotion_state.to_dict()
                 # Save unchanged state
                 self.emotion_persistence.save_state(emotion_state)
+                
+                # Reset interaction timer (user just interacted)
+                self._last_interaction_time = time.time()
 
             return {
                 "content": response_content,
@@ -828,6 +877,66 @@ class Conductor:
         if self._startup_time is None:
             return 0
         return time.time() - self._startup_time
+
+    async def _emotion_decay_loop(self):
+        """
+        Background loop that applies emotional decay every 5 minutes.
+        Loneliness increases when idle, other emotions decay naturally.
+        """
+        self._logger.info("Emotion decay loop started")
+        
+        # Wait a bit for startup to complete
+        await asyncio.sleep(5)
+        
+        while True:
+            try:
+                # Wait for 5 minutes between decay applications
+                await asyncio.sleep(300)  # 5 minutes
+                
+                if not self._running:
+                    break
+                
+                # Load current emotional state
+                current_state = self.emotion_persistence.load_latest_state()
+                if not current_state:
+                    # Initialize with default state if none exists
+                    current_state = EmotionalState()
+                    self._last_interaction_time = time.time()
+                
+                # Calculate idle time (time since last interaction)
+                idle_time_seconds = time.time() - self._last_interaction_time
+                
+                # Apply decay
+                decayed_state = self.decay_system.apply_decay(
+                    current_state,
+                    idle_time_seconds=int(idle_time_seconds)
+                )
+                
+                # Save the decayed state
+                self.emotion_persistence.save_state(
+                    decayed_state,
+                    notes=f"Decay applied (idle: {idle_time_seconds/60:.1f}min)"
+                )
+                
+                # Log the changes
+                before = current_state.get_all_emotions()
+                after = decayed_state.get_all_emotions()
+                self._logger.info(
+                    "Emotions decayed",
+                    loneliness_delta=round(after["loneliness"] - before["loneliness"], 3),
+                    excitement_delta=round(after["excitement"] - before["excitement"], 3),
+                    curiosity_delta=round(after["curiosity"] - before["curiosity"], 3),
+                    idle_minutes=round(idle_time_seconds/60, 1)
+                )
+                
+            except asyncio.CancelledError:
+                self._logger.info("Emotion decay loop cancelled")
+                break
+            except Exception as e:
+                self._logger.error(f"Emotion decay loop error: {e}")
+                await asyncio.sleep(60)  # Retry after 1 minute on error
+        
+        self._logger.info("Emotion decay loop stopped")
 
     async def _start_autonomy_system(self) -> bool:
         """

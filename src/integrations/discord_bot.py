@@ -12,7 +12,10 @@ from typing import Optional, Dict
 from datetime import datetime, timedelta, timezone
 
 import discord
-from discord.ext import commands, tasks
+from discord import Bot  # py-cord uses Bot directly
+from discord.ext import tasks
+from discord.commands import slash_command, Option, OptionChoice
+from discord.commands.permissions import default_permissions
 
 from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
@@ -48,293 +51,277 @@ EMOTION_COLORS = {
 def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Color]:
     """
     Given emotion_state dict with emotion dimensions, find dominant emotion.
-
+    
     Args:
-        emotion_state: Dict like {"loneliness": 0.5, "excitement": 0.8, ...}
-
+        emotion_state: Dict with emotion names as keys and float values (0-1)
+        
     Returns:
-        Tuple of (emotion_name, discord.Color)
-
-    Example:
-        emotion, color = get_dominant_emotion({"excitement": 0.8, "loneliness": 0.2})
-        # Returns ("excitement", discord.Color.green())
+        Tuple of (emotion_name, discord_color)
     """
     if not emotion_state:
-        return "neutral", discord.Color.blurple()  # Discord blurple as fallback
-
-    max_emotion = max(emotion_state.items(), key=lambda x: x[1])
-    emotion_name = max_emotion[0]
-    color = EMOTION_COLORS.get(emotion_name, discord.Color.blurple())
+        return "confidence", EMOTION_COLORS["confidence"]  # Default
+    
+    # Find the emotion with highest value
+    dominant = max(emotion_state.items(), key=lambda x: x[1])
+    emotion_name = dominant[0]
+    
+    # Get color, default to purple if unknown
+    color = EMOTION_COLORS.get(emotion_name, discord.Color.purple())
+    
     return emotion_name, color
 
 
-def format_response_as_embed(
-    response_dict: Dict, user_name: str = "User"
-) -> discord.Embed:
-    """
-    Format LLM response as Discord embed with emotion visualization.
-
+def format_response_as_embed(response, persona_name="Demi") -> discord.Embed:
+    """Format response as Discord embed with emotional theming.
+    
     Args:
-        response_dict: Response from conductor.request_inference() with keys:
-            - "content": str (the message text)
-            - "emotion_state": Dict (emotional state before response)
-            - "message_id": str (optional, for tracking)
-        user_name: Name of user who sent message (for reply context)
-
+        response: Response dict or string
+        persona_name: Name of persona to use in title
+        
     Returns:
-        discord.Embed ready to send
+        discord.Embed formatted response
     """
-    content = response_dict.get("content", "Error generating response")
-    emotion_state = response_dict.get("emotion_state", {})
-    message_id = response_dict.get("message_id", "")
-
+    if isinstance(response, dict):
+        content = response.get("content", "")
+        emotion_state = response.get("emotion_state", {})
+    else:
+        content = str(response)
+        emotion_state = {}
+    
     # Get dominant emotion for color
     dominant_emotion, color = get_dominant_emotion(emotion_state)
-
+    
     # Create embed
     embed = discord.Embed(
-        title=f"Demi's Response",
-        description=content[:2000],  # Discord 2000 char limit per embed description
+        description=content,
         color=color,
+        timestamp=datetime.now(timezone.utc)
     )
-
-    # Add emotion indicator as footer
-    emotion_display = dominant_emotion.replace("_", " ").title()
-    embed.set_footer(text=f"Mood: {emotion_display} | Demi v1")
-
-    # Add timestamp
-    embed.timestamp = discord.utils.utcnow()
-
-    # Optional: Add emotion breakdown as field (if verbose mode)
-    # This is hidden by default but could be shown in responses
-    if len(emotion_state) > 0 and any(v > 0.5 for v in emotion_state.values()):
-        # Create compact emotion summary (only show emotions > 0.3)
-        strong_emotions = [
-            f"{e.replace('_', ' ').title()}: {v:.1f}"
-            for e, v in emotion_state.items()
-            if v > 0.3
-        ]
-        if strong_emotions and len(strong_emotions) <= 3:
-            emotion_summary = " | ".join(strong_emotions)
-            embed.add_field(
-                name="Emotional Context", value=emotion_summary, inline=False
-            )
-
+    embed.set_author(name=persona_name)
+    
     return embed
 
 
-def should_generate_ramble(
-    emotion_state: Dict[str, float],
-    last_ramble_time: Optional[datetime] = None,
-    min_interval_minutes: int = 60,
-) -> tuple[bool, Optional[str]]:
-    """
-    Decide if Demi should post a ramble now.
-
-    Rules:
-    - Loneliness > 0.7 → ramble (missing interaction)
-    - Excitement > 0.8 → ramble (feeling social)
-    - Frustration > 0.6 → ramble (venting)
-    - Don't ramble more than every 60 minutes (prevents spam)
-
-    Args:
-        emotion_state: Dict of emotion values (e.g., {"loneliness": 0.8})
-        last_ramble_time: When last ramble was posted (for interval check)
-        min_interval_minutes: Minimum minutes between rambles (default 60)
-
-    Returns:
-        (should_ramble: bool, trigger: Optional[str])
-    """
-    if not emotion_state:
-        return False, None
-
-    # Check if enough time since last ramble
-    if last_ramble_time:
-        if datetime.now(timezone.utc) - last_ramble_time < timedelta(
-            minutes=min_interval_minutes
-        ):
-            return False, None
-
-    # Check emotional triggers
-    if emotion_state.get("loneliness", 0) > 0.7:
-        return True, "loneliness"
-
-    if emotion_state.get("excitement", 0) > 0.8:
-        return True, "excitement"
-
-    if emotion_state.get("frustration", 0) > 0.6:
-        return True, "frustration"
-
-    return False, None
-
-
 class RambleTask:
-    """Scheduled task for posting spontaneous rambles"""
-
-    def __init__(self, bot: commands.Bot, conductor, ramble_store: RambleStore, logger):
+    """Background task for generating spontaneous rambles."""
+    
+    def __init__(self, bot, conductor, ramble_channel_id: int, interval_minutes: int = 15):
         """Initialize ramble task.
-
+        
         Args:
             bot: Discord bot instance
-            conductor: Conductor instance for LLM inference
-            ramble_store: RambleStore for persistence
-            logger: Logger instance
+            conductor: Conductor for LLM inference
+            ramble_channel_id: Channel ID to post rambles to
+            interval_minutes: Minutes between ramble checks
         """
         self.bot = bot
         self.conductor = conductor
-        self.ramble_store = ramble_store
-        self.logger = logger
-        self.last_ramble_time = None
-        self.ramble_channel_id = int(os.getenv("DISCORD_RAMBLE_CHANNEL_ID", "0"))
-
-        if self.ramble_channel_id:
-            self.ramble_loop.start()
-        else:
-            self.logger.warning(
-                "DISCORD_RAMBLE_CHANNEL_ID not set - ramble posting disabled"
-            )
-
-    @tasks.loop(minutes=15)  # Check every 15 minutes
-    async def ramble_loop(self):
-        """Check if Demi should ramble, generate and post if so"""
+        self.ramble_channel_id = ramble_channel_id
+        self.interval = interval_minutes
+        self.logger = get_logger()
+        self.last_ramble_time: Optional[datetime] = None
+        
+        # Start background task
+        self._task = tasks.loop(minutes=interval_minutes)(self._ramble_loop)
+        self._task.start()
+        
+        self.logger.info(
+            "Discord ramble task initialized",
+            channel_id=ramble_channel_id,
+            interval_minutes=interval_minutes
+        )
+    
+    def _get_ramble_prompt(self, trigger: str, emotion_state) -> str:
+        """Generate ramble prompt based on trigger and emotions."""
+        base_prompts = {
+            "loneliness": "You're feeling lonely and want to reach out to the humans. Share a thought about connection or companionship.",
+            "excitement": "You're excited about something and want to share your enthusiasm with the channel.",
+            "frustration": "Something is frustrating you. Vent a little, but keep it playful and in character.",
+        }
+        
+        base = base_prompts.get(trigger, "Share a spontaneous thought.")
+        
+        # Add emotional context
+        if emotion_state:
+            emotions = emotion_state.get_all_emotions()
+            emotion_str = ", ".join([f"{k}: {v:.2f}" for k, v in sorted(emotions.items(), key=lambda x: -x[1])[:3]])
+            base += f"\n\nCurrent emotions: {emotion_str}"
+        
+        return f"[RAMBLE MODE - {trigger.upper()}]\n{base}\n\nGenerate a brief, in-character ramble (1-3 sentences). Be natural, not overly dramatic."
+    
+    async def _ramble_loop(self):
+        """Main ramble loop."""
         try:
-            # Get current emotion state
+            # Check if we should generate a ramble
             from src.emotion.persistence import EmotionPersistence
-
-            emotion_persist = EmotionPersistence()  # Uses default DB path
+            
+            emotion_persist = EmotionPersistence()
             emotion_state_obj = emotion_persist.load_latest_state()
-
-            # Convert to dict for decision logic
-            emotion_state = (
-                emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
-            )
-
-            # Check if should ramble
-            should_ramble, trigger = should_generate_ramble(
-                emotion_state, self.last_ramble_time, min_interval_minutes=60
-            )
-
-            if not should_ramble:
-                self.logger.debug("No ramble trigger met")
-                return
-
-            self.logger.info(f"Generating ramble (trigger: {trigger})")
-
-            # Generate ramble content via LLM pipeline
+            emotion_state = emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
+            
+            # Determine if we should ramble based on emotions
+            should_ramble = False
+            trigger = None
+            
+            # High loneliness triggers ramble
+            if emotion_state.get("loneliness", 0) > 0.6:
+                should_ramble = True
+                trigger = "loneliness"
+            # High excitement triggers ramble
+            elif emotion_state.get("excitement", 0) > 0.7:
+                should_ramble = True
+                trigger = "excitement"
+            # Frustration might trigger a vent
+            elif emotion_state.get("frustration", 0) > 0.6:
+                should_ramble = True
+                trigger = "frustration"
+            
+            # Check cooldown (minimum 10 minutes between rambles)
+            if should_ramble and self.last_ramble_time:
+                minutes_since = (datetime.now(timezone.utc) - self.last_ramble_time).total_seconds() / 60
+                if minutes_since < 10:
+                    should_ramble = False
+            
+            if should_ramble:
+                await self._generate_ramble(trigger, emotion_state_obj, emotion_state)
+                
+        except Exception as e:
+            self.logger.error(f"Ramble loop error: {e}")
+    
+    async def _generate_ramble(self, trigger: str, emotion_state_obj, emotion_state: Dict):
+        """Generate and post a ramble."""
+        try:
             prompt_addendum = self._get_ramble_prompt(trigger, emotion_state_obj)
-
-            # Format as LLM messages
             messages = [{"role": "user", "content": prompt_addendum}]
-
+            
             response = await self.conductor.request_inference(messages)
-
-            # Extract content from response (handle both dict and string)
+            
             if isinstance(response, dict):
                 content = response.get("content", "")
             else:
                 content = response
-
-            # Post to ramble channel
+            
+            # Post to channel
             channel = self.bot.get_channel(self.ramble_channel_id)
             if channel:
-                # Format as embed with ramble indication
                 response_dict = {"content": content, "emotion_state": emotion_state}
                 embed = format_response_as_embed(response_dict, "Demi")
-                embed.title = "💭 Demi's Thoughts"  # Visual ramble indicator
-
+                embed.title = "💭 Demi's Thoughts"
+                
                 await channel.send(embed=embed)
-                self.logger.info(f"Ramble posted: {len(content)} chars")
-
-                # Store ramble
-                ramble = Ramble(
-                    ramble_id=str(uuid.uuid4()),
-                    channel_id=str(self.ramble_channel_id),
-                    content=content,
-                    emotion_state=emotion_state,
-                    trigger=trigger,
-                    created_at=datetime.now(timezone.utc),
-                )
-                await self.ramble_store.save(ramble)
                 self.last_ramble_time = datetime.now(timezone.utc)
+                self.logger.info(f"Ramble posted (trigger: {trigger})")
             else:
-                self.logger.error(f"Ramble channel {self.ramble_channel_id} not found")
-
+                self.logger.warning(f"Ramble channel {self.ramble_channel_id} not found")
+                
         except Exception as e:
-            self.logger.error(f"Ramble generation failed: {e}")
-
-    @ramble_loop.before_loop
-    async def before_ramble(self):
-        """Wait for bot to be ready before starting ramble loop"""
-        await self.bot.wait_until_ready()
-
-    def _get_ramble_prompt(self, trigger: str, emotion_state) -> str:
-        """
-        Get the prompt to add to LLM for ramble generation.
-        Different prompts for different triggers.
-
-        Args:
-            trigger: Trigger type ("loneliness", "excitement", "frustration")
-            emotion_state: EmotionalState object (unused for now)
-
-        Returns:
-            Prompt string for LLM
-        """
-        if trigger == "loneliness":
-            return "I'm feeling a bit lonely. What's on my mind? (Generate a spontaneous, personal thought in first person, 1-2 sentences)"
-        elif trigger == "excitement":
-            return "I'm excited about something. What would I express right now? (Generate a spontaneous, enthusiastic thought in first person, 1-2 sentences)"
-        elif trigger == "frustration":
-            return "I'm frustrated. What would I vent about? (Generate a spontaneous, honest complaint in first person, 1-2 sentences)"
-        else:
-            return "What's on my mind? (Generate a spontaneous thought in first person, 1-2 sentences)"
-
+            self.logger.error(f"Failed to generate ramble: {e}")
+    
     def stop(self):
-        """Stop ramble loop"""
-        if self.ramble_loop.is_running():
-            self.ramble_loop.stop()
+        """Stop the ramble task."""
+        if self._task:
+            self._task.cancel()
+        self.logger.info("Ramble task stopped")
 
 
 class DiscordBot(BasePlatform):
-    """Discord bot platform integration.
-
-    Routes Discord messages (mentions and DMs) to Conductor's LLM pipeline
-    and sends responses back through Discord channels.
+    """Discord bot platform integration for Demi.
+    
+    Provides Discord presence with:
+    - Message routing from Discord to Conductor
+    - Response routing from Conductor to Discord
+    - Voice channel integration (optional)
+    - Reaction/button interactions
     """
 
     def __init__(self):
-        """Initialize Discord bot."""
+        """Initialize Discord bot platform."""
         super().__init__()
-        self._name = "discord"
-        self._status = "offline"
-
         self.logger = get_logger()
-        self.bot: Optional[commands.Bot] = None
-        self.token: Optional[str] = None
-        self.conductor = None
-        self._initialized = False
+        self.token = os.getenv("DISCORD_TOKEN", "")
+        self.guild_id = os.getenv("DISCORD_GUILD_ID")
+        self.channel_id = os.getenv("DISCORD_CHANNEL_ID")
+        self.ramble_channel_id = os.getenv("DISCORD_RAMBLE_CHANNEL_ID")
+        
+        # Bot instance
+        self.bot: Optional[Bot] = None
         self._bot_task: Optional[asyncio.Task] = None
-        self.autonomy_coordinator: Optional[AutonomyCoordinator] = None
+        self._status = "initialized"
+        self._initialized = False
+        
+        # Voice client
         self.voice_client: Optional[DiscordVoiceClient] = None
+        
+        # Conductor reference
+        self.conductor = None
+        
+        # Background task
         self.ramble_task: Optional[RambleTask] = None
+        
+        self.logger.info("Discord bot platform initialized")
 
     def initialize(self, config: dict) -> bool:
-        """Initialize Discord bot with intents and event handlers.
-
+        """Initialize platform with configuration.
+        
         Args:
-            config: Configuration dictionary for Discord
-
+            config: Configuration dictionary for this platform
+            
         Returns:
             True if initialization successful
         """
         try:
-            # Load token from environment (check both naming conventions)
-            self.token = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+            self._name = config.get("name", "discord")
+            self._initialized = True
+            return True
+        except Exception as e:
+            self.logger.error(f"Discord initialization failed: {e}")
+            return False
+    
+    def handle_request(self, request: dict) -> dict:
+        """Handle a request from this platform.
+        
+        Args:
+            request: Request dict with 'type' and other parameters
+            
+        Returns:
+            Response dict with 'status' and result data
+        """
+        try:
+            req_type = request.get("type")
+            
+            if req_type == "send_message":
+                # Async method can't be called directly, queue it
+                return {"status": "queued", "type": req_type}
+            elif req_type == "health_check":
+                health = self.health_check()
+                return {
+                    "status": health.status,
+                    "response_time_ms": health.response_time_ms,
+                    "error_message": health.error_message
+                }
+            else:
+                return {"status": "error", "message": f"Unknown request type: {req_type}"}
+                
+        except Exception as e:
+            self.logger.error(f"Error handling request: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    async def setup(self, conductor) -> bool:
+        """Setup Discord bot with conductor reference.
+        
+        Args:
+            conductor: Conductor instance for message routing
+            
+        Returns:
+            True if setup successful
+        """
+        try:
+            self.conductor = conductor
+            
             if not self.token:
-                raise ValueError(
-                    "DISCORD_TOKEN (or DISCORD_BOT_TOKEN) environment variable not set. "
-                    "Get token from Discord Developer Portal → Applications → [Your App] → Bot"
-                )
-
+                self.logger.error("DISCORD_TOKEN not set")
+                return False
+            
             if len(self.token.strip()) == 0:
                 raise ValueError("DISCORD_TOKEN is empty")
 
@@ -343,9 +330,10 @@ class DiscordBot(BasePlatform):
             intents.message_content = True  # Required to read message.content
             intents.guilds = True  # Required for server messages
             intents.dm_messages = True  # Required for DM handling
+            intents.voice_states = True  # Required for voice channel tracking
 
             # Create bot instance
-            self.bot = commands.Bot(command_prefix="!", intents=intents)
+            self.bot = Bot(command_prefix="!", intents=intents)
 
             # Register event handlers
             print(f"📌 Registering Discord event handlers...")
@@ -360,6 +348,18 @@ class DiscordBot(BasePlatform):
                         bot_id=self.bot.user.id,
                         guild_count=len(self.bot.guilds),
                     )
+                    
+                    # Sync slash commands
+                    try:
+                        # Sync commands to Discord
+                        self.logger.info("Syncing slash commands...")
+                        await self.bot.sync_commands()
+                        self.logger.info(f"Slash commands synced successfully")
+                        print(f"   Slash Commands: Synced")
+                    except Exception as e:
+                        self.logger.error(f"Failed to sync slash commands: {e}")
+                        print(f"   ⚠️ Slash command sync failed: {e}")
+                    
                     print(f"\n{'='*60}")
                     print(f"✅ DISCORD BOT ONLINE!")
                     print(f"   Bot: {self.bot.user}")
@@ -392,291 +392,164 @@ class DiscordBot(BasePlatform):
                 if message.author.bot:
                     return
 
-                # Check if message is a mention, DM, or in Demi's channel
-                is_mention = self.bot.user.mentioned_in(message)
+                # Check if we should respond
+                should_respond = False
                 is_dm = isinstance(message.channel, discord.DMChannel)
-                demi_channel_id = os.getenv("DISCORD_CHANNEL_ID", "")
 
-                if not (is_mention or is_dm or (demi_channel_id and str(message.channel.id) == demi_channel_id)):
-                    return  # Ignore messages not directed at Demi
+                # Always respond to DMs
+                if is_dm:
+                    should_respond = True
+                # Respond to mentions
+                elif self.bot.user in message.mentions:
+                    should_respond = True
+                # Respond in configured channel
+                elif self.channel_id and str(message.channel.id) == self.channel_id:
+                    should_respond = True
 
-                # Extract context
-                user_id = str(message.author.id)
-                guild_id = str(message.guild.id) if message.guild else None
-                channel_id = str(message.channel.id)
+                if should_respond:
+                    await self._handle_message(message, is_dm)
 
-                # Extract message content (remove bot mention if present)
-                content = message.content
-                if is_mention:
-                    # Strip bot mention from content
-                    for mention_str in [
-                        f"<@{self.bot.user.id}>",
-                        f"<@!{self.bot.user.id}>",
-                    ]:
-                        content = content.replace(mention_str, "").strip()
+                # Process commands (for slash commands to work)
+                await self.bot.process_application_commands(message)
 
-                # Log interaction
-                self.logger.info(
-                    "Discord message received",
-                    user_id=user_id,
-                    guild_id=guild_id,
-                    is_dm=is_dm,
-                    content_length=len(content),
-                )
-                print(f"💬 Discord message from {message.author}: {content[:50]}..." if len(content) > 50 else f"💬 Discord message from {message.author}: {content}")
-
-                # Skip empty messages after mention removal
-                if not content or len(content) == 0:
-                    return
-
-                # Check if conductor is available
-                if not self.conductor:
-                    await message.channel.send("I'm not ready yet. Try again in a moment.")
-                    return
-
-                try:
-                    # Track response time
-                    request_start = time.time()
-
-                    # Show typing indicator (improves UX)
-                    async with message.channel.typing():
-                        # Route through Conductor with emotion state and personality modulation
-                        response = await self.conductor.request_inference_for_platform(
-                            platform="discord",
-                            user_id=user_id,
-                            content=content,
-                            context={"guild_id": guild_id, "channel_id": channel_id},
-                        )
-
-                    # Calculate response time
-                    response_time_ms = (time.time() - request_start) * 1000
-
-                    # Extract and send response
-                    try:
-                        # Handle both dict and string responses
-                        if isinstance(response, dict):
-                            response_text = response.get("content", "")
-                        else:
-                            response_text = response
-
-                        # Send as plain message
-                        await message.channel.send(response_text)
-
-                        # Record success metrics
-                        platform_metrics = get_platform_metrics()
-                        platform_metrics.record_message(
-                            platform="discord",
-                            response_time_ms=response_time_ms,
-                            message_length=len(response_text),
-                            success=True
-                        )
-
-                        # Record conversation metrics
-                        conv_metrics = get_conversation_metrics()
-                        conv_metrics.record_conversation(
-                            user_message_length=len(content),
-                            bot_response_length=len(response_text),
-                            conversation_turn=1,  # Note: simplified, should track per user
-                            sentiment_score=0.5  # Note: could calculate from emotion state
-                        )
-
-                    except Exception as send_error:
-                        self.logger.warning(
-                            f"Failed to send response: {send_error}",
-                            user_id=user_id,
-                        )
-                        response_text = (
-                            response.get("content", response)
-                            if isinstance(response, dict)
-                            else response
-                        )
-                        # Fallback: try to send as plain text
-                        try:
-                            await message.channel.send(response_text)
-                        except Exception as fallback_error:
-                            self.logger.error(
-                                f"Failed to send fallback response: {fallback_error}",
-                                user_id=user_id,
-                            )
-                            await message.channel.send("Oops, something went wrong.")
-
-                            # Record failure metrics
-                            platform_metrics = get_platform_metrics()
-                            platform_metrics.record_message(
-                                platform="discord",
-                                response_time_ms=response_time_ms,
-                                message_length=0,
-                                success=False,
-                                error=str(fallback_error)
-                            )
-
-                    self.logger.info(
-                        "Discord response sent",
-                        user_id=user_id,
-                        response_length=len(response_text),
-                    )
-                    print(f"✅ Response sent: {response_text[:50]}..." if len(response_text) > 50 else f"✅ Response sent: {response_text}")
-
-                except Exception as e:
-                    self.logger.error(
-                        f"Discord message handling error: {e}",
-                        user_id=user_id,
-                        error_type=type(e).__name__,
-                    )
-                    print(f"❌ Error handling message: {str(e)}")
-
-                    # Record error metrics
-                    response_time_ms = (time.time() - request_start) * 1000
-                    platform_metrics = get_platform_metrics()
-                    platform_metrics.record_message(
-                        platform="discord",
-                        response_time_ms=response_time_ms,
-                        message_length=len(content),
-                        success=False,
-                        error=str(e)
-                    )
-
-                    # Send error message to user
-                    error_msg = "Oops, something went wrong. Try again in a moment."
-                    await message.channel.send(error_msg)
-
-            # Log successful initialization
-            self.logger.info(
-                "Discord bot initialized",
-                intents=["message_content", "guilds", "direct_messages"],
-            )
-
-            # Register voice commands
-            self._register_voice_commands()
-
-            self._initialized = True
-            self._status = "initialized"
-
-            return True
-
-        except ValueError as e:
-            self.logger.error(f"Discord bot configuration error: {e}")
-            self._status = "error"
-            return False
-        except Exception as e:
-            self.logger.error(f"Discord bot initialization failed: {e}")
-            self._status = "error"
-            return False
-
-    def setup(self, conductor) -> bool:
-        """Setup Discord bot with conductor reference and start it.
-
-        This is called after initialization to provide the conductor reference
-        and actually start the bot.
-
-        Args:
-            conductor: Conductor instance for LLM routing
-
-        Returns:
-            True if setup successful
-        """
-        try:
-            self.conductor = conductor
-            self.logger.info(f"Discord bot setup: Starting bot with token: {self.token[:20]}...")
-            print(f"🤖 Discord Bot: Starting connection...")
-
-            # Start bot in background (non-blocking)
-            self.logger.info("Creating asyncio task for bot.start()")
-            self._bot_task = asyncio.create_task(self.bot.start(self.token))
-
-            # Add callback to catch errors
-            def task_error_callback(task):
-                try:
-                    exc = task.exception()
-                    if exc:
-                        self.logger.error(f"Discord bot task exception: {exc}")
-                        print(f"❌ Discord Bot Error: {exc}")
-                except asyncio.CancelledError:
-                    self.logger.info("Discord bot task was cancelled")
-                except Exception as e:
-                    self.logger.error(f"Error in task callback: {e}")
-
-            self._bot_task.add_done_callback(task_error_callback)
-            self.logger.info("Bot start task created successfully")
-
-            # Get autonomy coordinator from conductor
-            if hasattr(conductor, "autonomy_coordinator"):
-                self.autonomy_coordinator = conductor.autonomy_coordinator
-                self.logger.info("Connected to unified autonomy system")
-            else:
-                self.logger.warning("Autonomy coordinator not available in conductor")
-
-            # Initialize ramble task for autonomous rambling
-            try:
-                import os
-                db_path = os.path.expanduser("~/.demi/demi.db")
-                ramble_store = RambleStore(db_path=db_path)
-                self.ramble_task = RambleTask(self.bot, conductor, ramble_store, self.logger)
-                self.logger.info("Discord ramble task initialized")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize ramble task: {e}")
+            self.logger.info("Discord bot setup complete and starting")
+            print("✅ Discord bot setup complete - waiting for connection...")
 
             # Initialize voice client if enabled
             voice_enabled = os.getenv("DISCORD_VOICE_ENABLED", "false").lower() == "true"
             if voice_enabled and HAS_VOICE:
                 try:
                     self.voice_client = DiscordVoiceClient(self.bot, conductor)
+                    self._register_voice_commands()
                     self.logger.info("Discord voice client initialized")
                 except Exception as e:
                     self.logger.error(f"Voice client initialization failed: {e}")
-            elif voice_enabled and not HAS_VOICE:
-                self.logger.warning("Voice features enabled but voice module not available")
+            else:
+                if voice_enabled:
+                    self.logger.warning("Voice enabled but DiscordVoiceClient not available")
+                else:
+                    self.logger.info("Voice features disabled (set DISCORD_VOICE_ENABLED=true to enable)")
 
-            self._status = "online"
-            self.logger.info("Discord bot setup complete and starting")
-            print("✅ Discord bot setup complete - waiting for connection...")
+            # Initialize ramble task if channel configured
+            if self.ramble_channel_id and conductor:
+                try:
+                    channel_id = int(self.ramble_channel_id)
+                    self.ramble_task = RambleTask(
+                        self.bot, 
+                        conductor, 
+                        channel_id,
+                        interval_minutes=15
+                    )
+                except ValueError:
+                    self.logger.error(f"Invalid DISCORD_RAMBLE_CHANNEL_ID: {self.ramble_channel_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize ramble task: {e}")
+
+            # Log successful initialization
+            self.logger.info(
+                "Discord bot initialized",
+                intents=["message_content", "guilds", "direct_messages", "voice_states"],
+            )
+
+            self._initialized = True
+            self._status = "initialized"
+
             return True
 
         except Exception as e:
             self.logger.error(f"Discord bot setup failed: {e}")
-            self._status = "error"
             print(f"❌ Discord bot setup failed: {e}")
             return False
 
     def _register_voice_commands(self):
-        """Register voice-related bot commands."""
+        """Register slash commands for voice and utilities using pycord syntax."""
+        from discord.commands import Option, OptionChoice
         
-        @self.bot.command(name="join")
-        async def join_voice(ctx):
-            """Join the user's current voice channel."""
+        # Define choice options
+        voice_mode_choices = [
+            OptionChoice("🎙️ Always Listening", "on"),
+            OptionChoice("🔇 Wake-word Only", "off"),
+            OptionChoice("📊 Show Status", "status"),
+        ]
+        
+        emotion_choices = [
+            OptionChoice("💜 Loneliness", "loneliness"),
+            OptionChoice("💚 Excitement", "excitement"),
+            OptionChoice("❤️ Frustration", "frustration"),
+        ]
+        
+        style_choices = [
+            OptionChoice("🎭 Normal", "normal"),
+            OptionChoice("💜 Flirty", "flirty"),
+            OptionChoice("😤 Sassy", "sassy"),
+            OptionChoice("🤔 Thoughtful", "thoughtful"),
+        ]
+        
+        speaker_choices = [
+            OptionChoice("👤 Users only", "user"),
+            OptionChoice("🤖 Demi only", "demi"),
+            OptionChoice("👥 Everyone", "all"),
+        ]
+        
+        @self.bot.slash_command(name="join", description="Join your current voice channel")
+        @default_permissions(connect=True)
+        async def cmd_join(ctx):
+            """Join voice channel."""
             if not self.voice_client:
-                await ctx.reply("Voice features are disabled.", mention_author=False)
-                return
+                return await ctx.respond("Voice features are disabled.", ephemeral=True)
             
             if not ctx.author.voice:
-                await ctx.reply(
-                    "You need to be in a voice channel first, mortal.", 
-                    mention_author=False
+                return await ctx.respond(
+                    "❌ You need to be in a voice channel first, mortal.", 
+                    ephemeral=True
                 )
-                return
             
             channel = ctx.author.voice.channel
+            
+            # Check bot permissions
+            bot_member = ctx.guild.me
+            permissions = channel.permissions_for(bot_member)
+            
+            if not permissions.connect:
+                self.logger.warning(f"Missing Connect permission in guild {ctx.guild.id}, channel {channel.id}")
+                return await ctx.respond(
+                    "❌ I don't have permission to connect to that voice channel.",
+                    ephemeral=True
+                )
+            
+            self.logger.info(f"Attempting to join voice channel: {channel.name} (guild: {ctx.guild.id})")
             success = await self.voice_client.join_channel(channel)
             
             if success:
+                # Check voice receive capability
+                from src.integrations.discord_voice import HAS_VOICE_RECEIVE
+                
+                if HAS_VOICE_RECEIVE:
+                    desc = f"I have arrived in **{channel.name}**.\nSay '**{self.voice_client.wake_word}**' to command me."
+                else:
+                    desc = (
+                        f"I have arrived in **{channel.name}**.\n\n"
+                        f"⚠️ **Voice receive not available** - I can speak but cannot hear.\n"
+                        f"Use `/say` to make me talk."
+                    )
+                
                 embed = discord.Embed(
                     title="🔮 Voice Connected",
-                    description="I have arrived. Say 'Demi' to command me.",
+                    description=desc,
                     color=discord.Color.purple()
                 )
-                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+                await ctx.respond(embed=embed, ephemeral=True)
             else:
-                await ctx.reply(
-                    "I cannot join that channel.", 
-                    mention_author=False
+                await ctx.respond(
+                    "❌ Failed to join voice channel. Check server logs for details.", 
+                    ephemeral=True
                 )
         
-        @self.bot.command(name="leave")
-        async def leave_voice(ctx):
-            """Leave the voice channel."""
+        @self.bot.slash_command(name="leave", description="Leave the voice channel")
+        async def cmd_leave(ctx):
+            """Leave voice channel."""
             if not self.voice_client:
-                await ctx.reply("Voice features are disabled.", mention_author=False)
-                return
+                return await ctx.respond("Voice features are disabled.", ephemeral=True)
             
             success = await self.voice_client.leave_channel(ctx.guild.id)
             
@@ -686,61 +559,407 @@ class DiscordBot(BasePlatform):
                     description="Call me when you need divine wisdom.",
                     color=discord.Color.purple()
                 )
-                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+                await ctx.respond(embed=embed, ephemeral=True)
             else:
-                await ctx.reply(
-                    "I'm not in a voice channel.", 
-                    mention_author=False
-                )
+                await ctx.respond("I'm not in a voice channel.", ephemeral=True)
         
-        @self.bot.command(name="voice")
-        async def voice_control(ctx, action: Optional[str] = None):
-            """Control voice settings: !voice on | !voice off"""
+        @self.bot.slash_command(
+            name="voice", 
+            description="Control voice listening mode",
+            options=[
+                Option(
+                    str,
+                    name="mode",
+                    description="Listening mode",
+                    required=True,
+                    choices=voice_mode_choices
+                )
+            ]
+        )
+        async def cmd_voice(ctx, mode: str):
+            """Control voice listening."""
             if not self.voice_client:
-                await ctx.reply("Voice features are disabled.", mention_author=False)
-                return
+                return await ctx.respond("Voice features are disabled.", ephemeral=True)
+            
+            if mode == "status":
+                session = self.voice_client.get_session(ctx.guild.id)
+                if not session:
+                    return await ctx.respond("I'm not in a voice channel.", ephemeral=True)
+                
+                status = "enabled" if self.voice_client.listen_after_response else "disabled"
+                embed = discord.Embed(
+                    title="🎙️ Voice Status",
+                    description=f"Always-listening mode: **{status}**\nChannel: <#{session.channel_id}>",
+                    color=discord.Color.blue()
+                )
+                return await ctx.respond(embed=embed, ephemeral=True)
             
             session = self.voice_client.get_session(ctx.guild.id)
             if not session:
-                await ctx.reply(
-                    "I'm not in a voice channel.", 
-                    mention_author=False
-                )
-                return
+                return await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             
-            if action is None:
-                # Show current status
-                status = "enabled" if self.voice_client.listen_after_response else "disabled"
-                await ctx.reply(
-                    f"Always-listening mode is currently {status}. Use `!voice on` or `!voice off`.",
-                    mention_author=False
-                )
-                return
-            
-            if action.lower() == "on":
+            if mode == "on":
                 self.voice_client.start_listening(ctx.guild.id)
                 embed = discord.Embed(
                     title="🎙️ Listening Enabled",
                     description="Always-listening mode on. I hear everything.",
                     color=discord.Color.green()
                 )
-                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
+                await ctx.respond(embed=embed, ephemeral=True)
             
-            elif action.lower() == "off":
+            elif mode == "off":
                 self.voice_client.stop_listening(ctx.guild.id)
                 embed = discord.Embed(
                     title="🔇 Listening Disabled",
                     description="Wake-word only mode. Say 'Demi' to get my attention.",
                     color=discord.Color.orange()
                 )
-                await ctx.reply(embed=embed, mention_author=False, delete_after=10)
-            
-            else:
-                await ctx.reply(
-                    "Usage: `!voice on` | `!voice off`", 
-                    mention_author=False
+                await ctx.respond(embed=embed, ephemeral=True)
+        
+        @self.bot.slash_command(
+            name="ramble",
+            description="Manually trigger a Demi ramble",
+            options=[
+                Option(
+                    str,
+                    name="emotion",
+                    description="Emotion to express",
+                    required=False,
+                    choices=emotion_choices,
+                    default="loneliness"
                 )
-    
+            ]
+        )
+        async def cmd_ramble(ctx, emotion: str = "loneliness"):
+            """Trigger a ramble."""
+            if not self.ramble_task:
+                return await ctx.respond(
+                    "Ramble system is not configured. Set DISCORD_RAMBLE_CHANNEL_ID in your .env file.",
+                    ephemeral=True
+                )
+            
+            try:
+                # Get current emotion state
+                from src.emotion.persistence import EmotionPersistence
+                emotion_persist = EmotionPersistence()
+                emotion_state_obj = emotion_persist.load_latest_state()
+                emotion_state = emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
+                
+                # Generate ramble content
+                prompt_addendum = self.ramble_task._get_ramble_prompt(emotion, emotion_state_obj)
+                messages = [{"role": "user", "content": prompt_addendum}]
+                response = await self.conductor.request_inference(messages)
+                
+                # Extract content
+                if isinstance(response, dict):
+                    content = response.get("content", "")
+                else:
+                    content = response
+                
+                # Post to channel
+                channel = self.bot.get_channel(self.ramble_task.ramble_channel_id)
+                if channel:
+                    response_dict = {"content": content, "emotion_state": emotion_state}
+                    embed = format_response_as_embed(response_dict, "Demi")
+                    embed.title = "💭 Demi's Thoughts"
+                    
+                    await channel.send(embed=embed)
+                    
+                    # Confirm to user
+                    confirm_embed = discord.Embed(
+                        title="💭 Ramble Posted",
+                        description=f"Posted to <#{self.ramble_task.ramble_channel_id}> with emotion: **{emotion}**",
+                        color=EMOTION_COLORS.get(emotion, discord.Color.purple())
+                    )
+                    await ctx.respond(embed=confirm_embed, ephemeral=True)
+                else:
+                    await ctx.respond("❌ Could not find ramble channel.", ephemeral=True)
+                    
+            except Exception as e:
+                self.logger.error(f"Ramble command failed: {e}")
+                await ctx.respond(f"❌ Failed to generate ramble: {e}", ephemeral=True)
+        
+        @self.bot.slash_command(
+            name="say",
+            description="Make Demi speak in voice channel",
+            options=[
+                Option(
+                    str,
+                    name="message",
+                    description="What Demi should say",
+                    required=True
+                ),
+                Option(
+                    str,
+                    name="style",
+                    description="Voice style/emotion",
+                    required=False,
+                    choices=style_choices,
+                    default="normal"
+                )
+            ]
+        )
+        async def cmd_say(ctx, message: str, style: str = "normal"):
+            """Make Demi speak in voice channel."""
+            # Check if voice features enabled
+            if not self.voice_client:
+                return await ctx.respond("❌ Voice features are disabled.", ephemeral=True)
+            
+            # Check if Demi is in a voice channel
+            session = self.voice_client.get_session(ctx.guild.id)
+            if not session:
+                return await ctx.respond(
+                    "❌ I'm not in a voice channel. Use `/join` first.", 
+                    ephemeral=True
+                )
+            
+            # Check message length
+            if len(message) > 500:
+                return await ctx.respond(
+                    "❌ Message too long (max 500 characters).", 
+                    ephemeral=True
+                )
+            
+            try:
+                # Log the command
+                self.logger.info(f"TTS command from {ctx.author}: {message[:50]}...")
+                
+                # Make Demi speak
+                from src.integrations.discord_voice import HAS_TTS
+                
+                if not HAS_TTS:
+                    return await ctx.respond(
+                        "❌ TTS is not available. Voices not downloaded.", 
+                        ephemeral=True
+                    )
+                
+                # Use voice client to speak
+                success = await self.voice_client._speak_response_text(
+                    session.voice_client,
+                    message,
+                    guild_id=ctx.guild.id
+                )
+                
+                if success is not False:
+                    embed = discord.Embed(
+                        title="🎙️ Speaking",
+                        description=f"**Said:** {message[:200]}{'...' if len(message) > 200 else ''}",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text=f"Requested by {ctx.author.display_name}")
+                    await ctx.respond(embed=embed, ephemeral=True)
+                else:
+                    await ctx.respond("❌ Failed to speak. Check logs.", ephemeral=True)
+                    
+            except Exception as e:
+                self.logger.error(f"Say command error: {e}")
+                await ctx.respond(f"❌ Error: {e}", ephemeral=True)
+        
+        @self.bot.slash_command(
+            name="transcript",
+            description="View recent voice conversation transcripts",
+            options=[
+                Option(
+                    str,
+                    name="speaker",
+                    description="Filter by speaker",
+                    required=False,
+                    choices=speaker_choices,
+                    default="all"
+                ),
+                Option(
+                    int,
+                    name="lines",
+                    description="Number of lines to show (max 50)",
+                    required=False,
+                    default=20,
+                    min_value=1,
+                    max_value=50
+                )
+            ]
+        )
+        async def cmd_transcript(ctx, speaker: str = "all", lines: int = 20):
+            """View voice conversation transcripts."""
+            # Get voice logger
+            from src.integrations.voice_transcript_logger import get_voice_logger
+            logger = get_voice_logger()
+            
+            # Get transcripts
+            speaker_type = None if speaker == "all" else speaker
+            transcripts = logger.get_recent_transcripts(
+                guild_id=ctx.guild.id,
+                limit=lines,
+                speaker_type=speaker_type
+            )
+            
+            if not transcripts:
+                return await ctx.respond(
+                    "📭 No voice transcripts found for today.", 
+                    ephemeral=True
+                )
+            
+            # Format as text
+            formatted_lines = []
+            for entry in transcripts:
+                time_str = entry.get("timestamp", "?")[11:19]  # HH:MM:SS
+                speaker_name = entry.get("username", "Unknown")
+                text = entry.get("text", "")
+                icon = "👤" if entry.get("speaker_type") == "user" else "🤖"
+                formatted_lines.append(f"`{time_str}` {icon} **{speaker_name}**: {text}")
+            
+            # Create embed
+            embed = discord.Embed(
+                title="🎙️ Voice Conversation Transcript",
+                description="\n".join(formatted_lines[-lines:]),
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.set_footer(text=f"Showing last {len(formatted_lines[-lines:])} entries")
+            
+            await ctx.respond(embed=embed, ephemeral=True)
+        
+        # Error handler for permission errors
+        @cmd_join.error
+        async def join_error(ctx, error):
+            # Check for permission-related errors
+            error_str = str(error).lower()
+            if "permission" in error_str or "missing" in error_str:
+                await ctx.respond(
+                    "❌ You need permission to connect to voice channels.", 
+                    ephemeral=True
+                )
+            else:
+                self.logger.error(f"Join command error: {error}")
+                await ctx.respond("❌ An error occurred. Check logs.", ephemeral=True)
+        
+        self.logger.info("Slash commands registered: /join, /leave, /voice, /say, /ramble, /transcript")
+
+    async def _handle_message(self, message: discord.Message, is_dm: bool = False):
+        """Handle incoming Discord message.
+        
+        Args:
+            message: Discord message
+            is_dm: Whether message is a DM
+        """
+        try:
+            # Extract content
+            content = message.content
+            
+            # Remove bot mention from content if present
+            if self.bot.user in message.mentions:
+                content = content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
+            
+            # Get user info
+            user_id = str(message.author.id)
+            username = str(message.author)
+            guild_id = str(message.guild.id) if message.guild else None
+            channel_id = str(message.channel.id)
+
+            # Extract message content (remove bot mention if present)
+            content = message.content
+            if self.bot.user in message.mentions:
+                content = content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
+
+            # Log incoming message
+            self.logger.info(
+                f"Discord message received",
+                user=username,
+                guild_id=guild_id,
+                channel_id=channel_id,
+                is_dm=is_dm,
+                content_length=len(content),
+            )
+
+            # Route to conductor
+            if self.conductor:
+                # Get or create conversation ID
+                conversation_id = f"discord_{channel_id}"
+
+                # Route through conductor
+                response = await self.conductor.route_message(
+                    content=content,
+                    platform="discord",
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    metadata={
+                        "username": username,
+                        "guild_id": guild_id,
+                        "channel_id": channel_id,
+                        "is_dm": is_dm,
+                    },
+                )
+
+                # Format and send response
+                if response:
+                    # Calculate response time
+                    start_time = time.time()
+
+                    # Send response
+                    embed = format_response_as_embed(response, "Demi")
+                    await message.channel.send(embed=embed)
+
+                    # Record metrics
+                    response_time_ms = (time.time() - start_time) * 1000
+                    from src.monitoring.metrics import get_discord_metrics
+                    discord_metrics = get_discord_metrics()
+                    discord_metrics.record_message_processed(
+                        response_time_ms=response_time_ms
+                    )
+
+        except Exception as e:
+            self.logger.error(f"Error handling Discord message: {e}")
+            await message.channel.send("I encountered an error processing your message.")
+
+    async def start(self) -> bool:
+        """Start Discord bot connection.
+        
+        Returns:
+            True if started successfully
+        """
+        try:
+            if not self._initialized:
+                self.logger.error("Discord bot not initialized. Call setup() first.")
+                return False
+
+            print("🤖 Discord Bot: Starting connection...")
+            self.logger.info("Creating asyncio task for bot.start()")
+            
+            # Start bot in background task
+            self._bot_task = asyncio.create_task(self.bot.start(self.token))
+            
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Discord bot start failed: {e}")
+            print(f"❌ Discord bot start failed: {e}")
+            return False
+
+    async def send_message(self, content: str, conversation_id: str, **kwargs) -> bool:
+        """Send message to Discord channel.
+        
+        Args:
+            content: Message content
+            conversation_id: Discord channel ID
+            **kwargs: Additional arguments
+            
+        Returns:
+            True if sent successfully
+        """
+        try:
+            channel = self.bot.get_channel(int(conversation_id))
+            if not channel:
+                self.logger.error(f"Channel {conversation_id} not found")
+                return False
+
+            # Format as embed
+            embed = format_response_as_embed(content, "Demi")
+            await channel.send(embed=embed)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to send Discord message: {e}")
+            return False
+
     async def shutdown(self) -> None:
         """Shutdown Discord bot gracefully."""
         try:
@@ -781,6 +1000,7 @@ class DiscordBot(BasePlatform):
         Returns:
             PluginHealth with status and response time
         """
+        now = datetime.now()
         try:
             is_ready = self.bot.is_ready() if self.bot else False
 
@@ -809,71 +1029,19 @@ class DiscordBot(BasePlatform):
             return PluginHealth(
                 status=status,
                 response_time_ms=latency_ms,
-                last_check=datetime.now(),
-                error_message=error_message,
+                last_check=now,
+                error_message=error_message
             )
 
         except Exception as e:
-            self.logger.error(f"Discord health check error: {e}")
+            self.logger.error(f"Discord health check failed: {e}")
             return PluginHealth(
-                status="unhealthy",
+                status="error",
                 response_time_ms=0.0,
-                last_check=datetime.now(),
-                error_message=str(e),
+                last_check=now,
+                error_message=str(e)
             )
 
-    def handle_request(self, request: dict) -> dict:
-        """Handle platform-specific requests.
 
-        Args:
-            request: Request dict with action and parameters
-
-        Returns:
-            Response dict with status and data
-        """
-        # This method is part of BasePlatform interface but not needed
-        # for Discord message routing (handled via on_message event)
-        return {
-            "status": "success",
-            "message": "Discord bot uses event-driven message routing",
-        }
-
-    def send_message(self, content: str, channel_id: str) -> bool:
-        """
-        Send message through Discord bot for unified autonomy system.
-
-        Args:
-            content: Message content to send
-            channel_id: Discord channel ID
-
-        Returns:
-            True if message sent successfully
-        """
-        try:
-            if not self.bot or not self.bot.is_ready():
-                return False
-
-            # Get channel
-            channel = self.bot.get_channel(int(channel_id))
-            if not channel:
-                self.logger.error(f"Discord channel {channel_id} not found")
-                return False
-
-            # Create embed for autonomous message
-            response_dict = {
-                "content": content,
-                "emotion_state": {},  # Will be populated by autonomy system
-            }
-            embed = format_response_as_embed(response_dict, "Demi")
-            embed.title = (
-                "💭 Demi's Thoughts"  # Visual indicator for autonomous messages
-            )
-
-            # Send message
-            asyncio.create_task(channel.send(embed=embed))
-            self.logger.info(f"Autonomous Discord message sent to channel {channel_id}")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to send autonomous Discord message: {e}")
-            return False
+# For plugin discovery
+PluginClass = DiscordBot

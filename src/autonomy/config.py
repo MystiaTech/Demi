@@ -11,8 +11,8 @@ class TriggerThresholds:
     """Emotional trigger threshold settings."""
 
     def __init__(self, **kwargs):
-        self.loneliness = kwargs.get("loneliness", 0.7)
-        self.excitement = kwargs.get("excitement", 0.8)
+        self.loneliness = kwargs.get("loneliness", 0.6)  # Lowered from 0.7
+        self.excitement = kwargs.get("excitement", 0.7)  # Lowered from 0.8
         self.frustration = kwargs.get("frustration", 0.6)
         self.jealousy = kwargs.get("jealousy", 0.7)
         self.vulnerability = kwargs.get("vulnerability", 0.5)

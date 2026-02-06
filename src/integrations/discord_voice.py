@@ -58,6 +58,89 @@ except ImportError:
     HAS_EMOTIONAL_STATE = False
     EmotionalState = None
 
+# Voice transcript logging
+from src.integrations.voice_transcript_logger import get_voice_logger
+from src.integrations.voice_safety import get_voice_safety_guard
+
+# Voice receive support - discord.py experimental
+try:
+    import discord.sinks
+    HAS_VOICE_RECEIVE = True
+except ImportError:
+    HAS_VOICE_RECEIVE = False
+
+# Try alternative imports for voice receive
+try:
+    from discord.sinks import Sink, MP3Sink
+    HAS_SINK = True
+except ImportError:
+    HAS_SINK = False
+    Sink = None
+    MP3Sink = None
+
+
+class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
+    """Custom audio sink for Speech-to-Text processing.
+    
+    Receives audio data from Discord voice receive and processes it
+    through STT pipeline.
+    """
+    
+    def __init__(self, voice_client: "DiscordVoiceClient", guild_id: int, *, filters=None):
+        super().__init__(filters=filters)
+        self.voice_client = voice_client
+        self.guild_id = guild_id
+        self.logger = get_logger()
+        self.audio_data: Dict[int, bytes] = {}
+        self._loop = asyncio.get_event_loop()
+        
+    def write(self, data: bytes, user_id: int):
+        """Called when audio data is received from a user.
+        
+        Args:
+            data: Raw audio data
+            user_id: Discord user ID (int)
+        """
+        # Ignore bot's own voice
+        if user_id == self.voice_client.bot.user.id:
+            return
+            
+        if user_id not in self.audio_data:
+            self.audio_data[user_id] = b""
+        self.audio_data[user_id] += data
+        
+        # Process audio for this user (use threadsafe since called from DecodeManager thread)
+        asyncio.run_coroutine_threadsafe(self._process_user_audio(user_id), self._loop)
+        
+    async def _process_user_audio(self, user_id: int):
+        """Process accumulated audio for a user.
+        
+        Args:
+            user_id: Discord user ID
+        """
+        if user_id not in self.audio_data:
+            return
+            
+        audio = self.audio_data[user_id]
+        if len(audio) < 16000 * 2 * 1:  # At least 1 second of audio
+            return
+            
+        # Clear buffer
+        self.audio_data[user_id] = b""
+        
+        # Get user info from bot
+        user = self.voice_client.bot.get_user(user_id)
+        username = user.name if user else f"User_{user_id}"
+        
+        # Process through voice client
+        await self.voice_client._handle_incoming_audio(
+            self.guild_id, user_id, username, audio
+        )
+        
+    def cleanup(self):
+        """Cleanup when recording stops."""
+        self.audio_data.clear()
+
 
 @dataclass
 class VoiceSession:
@@ -75,6 +158,7 @@ class VoiceSession:
         pending_audio_buffer: Accumulated audio data for processing
         user_speaking_start: When current user started speaking
         current_user_id: ID of user currently speaking
+        session_id: Unique session identifier for logging
     """
     voice_client: discord.VoiceClient
     channel_id: int
@@ -87,6 +171,7 @@ class VoiceSession:
     pending_audio_buffer: bytes = field(default_factory=bytes)
     user_speaking_start: Optional[datetime] = None
     current_user_id: Optional[int] = None
+    session_id: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%d_%H%M%S"))
 
 
 class AudioBuffer:
@@ -223,6 +308,16 @@ class DiscordVoiceClient:
         # Running tasks for cleanup
         self._listen_tasks: Dict[int, asyncio.Task] = {}
         
+        # Voice recording sinks per guild
+        self._voice_sinks: Dict[int, STTSink] = {}
+        
+        # Transcript logger
+        self.transcript_logger = get_voice_logger()
+        
+        # Safety guard (bot user ID set when bot connects)
+        self.safety_guard = get_voice_safety_guard(bot_user_id=None)
+        self._bot_user_id: Optional[int] = None
+        
         self.logger.info(
             "DiscordVoiceClient initialized",
             wake_word=self.wake_word,
@@ -230,6 +325,7 @@ class DiscordVoiceClient:
             stt_available=HAS_STT,
             tts_available=HAS_TTS,
             vad_available=HAS_VAD,
+            voice_receive_available=HAS_VOICE_RECEIVE,
         )
     
     async def join_channel(self, channel: discord.VoiceChannel) -> bool:
@@ -275,8 +371,11 @@ class DiscordVoiceClient:
             
             return True
             
+        except discord.errors.ClientException as e:
+            self.logger.error(f"Discord client error joining voice channel: {e}")
+            return False
         except Exception as e:
-            self.logger.error(f"Failed to join voice channel: {e}")
+            self.logger.error(f"Failed to join voice channel: {type(e).__name__}: {e}")
             return False
     
     async def leave_channel(self, guild_id: int) -> bool:
@@ -413,15 +512,45 @@ class DiscordVoiceClient:
         Args:
             voice_client: Discord voice client instance
         """
-        self.logger.info(f"Connected to voice channel: {voice_client.channel.name}")
+        guild_id = voice_client.guild.id
+        channel_name = voice_client.channel.name
+        self.logger.info(f"Connected to voice channel: {channel_name}", guild_id=guild_id)
         
-        # Play join sound (optional)
+        # Set bot user ID for safety guard
+        if self.bot and self.bot.user and not self._bot_user_id:
+            self._bot_user_id = self.bot.user.id
+            self.safety_guard.bot_user_id = self._bot_user_id
+        
+        # Start voice recording if available
+        if HAS_VOICE_RECEIVE:
+            try:
+                sink = STTSink(self, guild_id)
+                self._voice_sinks[guild_id] = sink
+                voice_client.start_recording(sink, self._on_recording_finished)
+                self.logger.info(f"Voice recording started for guild {guild_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to start voice recording: {e}")
+        else:
+            self.logger.warning(
+                "Voice receive not available. Demi cannot hear users. "
+                "Install discord.py with voice receive support."
+            )
+        
+        # Play join sound
         await self._play_join_sound(voice_client)
         
-        # Start listening loop
-        guild_id = voice_client.guild.id
+        # Start listening loop for session management
         task = asyncio.create_task(self._voice_listen_loop(voice_client))
         self._listen_tasks[guild_id] = task
+    
+    def _on_recording_finished(self, sink: STTSink, *args):
+        """Called when voice recording stops.
+        
+        Args:
+            sink: The audio sink that was recording
+        """
+        self.logger.info(f"Voice recording finished for guild")
+        sink.cleanup()
     
     async def _on_voice_disconnect(self, guild_id: int):
         """Called when disconnected from voice channel.
@@ -550,6 +679,262 @@ class DiscordVoiceClient:
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
     
+    async def _handle_incoming_audio(
+        self,
+        guild_id: int,
+        user_id: int,
+        username: str,
+        audio_data: bytes
+    ):
+        """Handle incoming audio from voice receive sink.
+        
+        This is called by the STTSink when audio is received.
+        
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            username: Discord username
+            audio_data: Raw audio data (Opus)
+        """
+        session = self.sessions.get(guild_id)
+        if not session or not session.is_listening:
+            return
+        
+        # Convert Opus to PCM
+        pcm_data = self._opus_to_pcm(audio_data)
+        if not pcm_data:
+            return
+        
+        # Add to buffer
+        buffer = self._audio_buffers.get(guild_id)
+        if not buffer:
+            return
+        
+        is_new_speech = buffer.append(pcm_data, user_id)
+        
+        # Update session activity
+        session.last_activity = datetime.now()
+        
+        # Check if we should process (enough audio accumulated)
+        if buffer.duration_ms >= 2000:  # 2 seconds of audio
+            await self._process_audio_buffer(session, buffer, user_id, username)
+    
+    async def _process_audio_buffer(
+        self,
+        session: VoiceSession,
+        buffer: AudioBuffer,
+        user_id: int,
+        username: str
+    ):
+        """Process audio buffer and transcribe.
+        
+        Args:
+            session: Active voice session
+            buffer: Audio buffer
+            user_id: Discord user ID
+            username: Discord username
+        """
+        audio_data, _ = buffer.get_and_clear()
+        
+        if len(audio_data) < 6400:  # Min 200ms
+            return
+        
+        # Transcribe
+        transcription = await self._transcribe_audio(audio_data)
+        if not transcription or not transcription.text:
+            return
+        
+        text = transcription.text.strip()
+        if not text:
+            return
+        
+        # Log user speech
+        self.transcript_logger.log_user_speech(
+            text=text,
+            guild_id=session.guild_id,
+            channel_id=session.channel_id,
+            user_id=user_id,
+            username=username,
+            session_id=session.session_id
+        )
+        
+        self.logger.info(f"[VOICE] {username}: {text}")
+        
+        # Process command
+        await self._process_utterance_text(session, user_id, username, text)
+    
+    async def _process_utterance_text(
+        self,
+        session: VoiceSession,
+        user_id: int,
+        username: str,
+        text: str
+    ):
+        """Process transcribed text utterance with safety checks.
+        
+        Args:
+            session: Active voice session
+            user_id: Discord user ID
+            username: Discord username
+            text: Transcribed text
+        """
+        # Safety check first
+        allowed, reason = self.safety_guard.check_safety(
+            user_id=user_id,
+            username=username,
+            text=text,
+            guild_id=session.guild_id
+        )
+        
+        if not allowed:
+            self.logger.warning(f"[SAFETY] Blocked voice input from {username}: {reason}")
+            return
+        
+        # Check for wake word (unless in always-listening mode)
+        if not session.wake_word_detected and not self.listen_after_response:
+            if self._check_wake_word(text):
+                self.logger.info(f"Wake word detected from {username}")
+                session.wake_word_detected = True
+                await self._play_wake_acknowledgment(session.voice_client)
+                
+                # If only wake word, wait for more
+                if len(text.split()) <= 2:
+                    return
+            else:
+                # No wake word and not always-listening
+                return
+        
+        # Record this activation passed safety checks
+        self.safety_guard.record_activation(user_id)
+        
+        # Get response from Conductor
+        response_text = await self._get_llm_response(username, text)
+        
+        # Log Demi's response
+        self.transcript_logger.log_demi_response(
+            text=response_text,
+            guild_id=session.guild_id,
+            channel_id=session.channel_id,
+            session_id=session.session_id
+        )
+        
+        # Speak response
+        await self._speak_response_text(session.voice_client, response_text)
+        
+        # Reset wake word detection
+        if not self.listen_after_response:
+            session.wake_word_detected = False
+    
+    async def _get_llm_response(self, username: str, text: str) -> str:
+        """Get response from LLM via Conductor.
+        
+        Args:
+            username: User's name
+            text: User's message
+            
+        Returns:
+            Response text
+        """
+        if not self.conductor:
+            return "I'm not connected to my brain right now."
+        
+        try:
+            messages = [{
+                "role": "user",
+                "content": f"[Voice from {username}] {text}"
+            }]
+            
+            response = await self.conductor.request_inference(messages)
+            
+            if isinstance(response, dict):
+                return response.get("content", "")
+            return response
+            
+        except Exception as e:
+            self.logger.error(f"LLM error: {e}")
+            return "I'm sorry, I couldn't process that."
+    
+    async def _speak_response_text(
+        self, 
+        voice_client: discord.VoiceClient, 
+        text: str,
+        guild_id: int = None
+    ):
+        """Speak text via TTS with safety tracking.
+        
+        Args:
+            voice_client: Discord voice client
+            text: Text to speak
+            guild_id: Guild ID for safety tracking
+        """
+        if not HAS_TTS or not self.tts:
+            self.logger.warning("TTS not available, cannot speak response")
+            return
+        
+        # Set speaking state (prevents STT from hearing our own output)
+        self.safety_guard.set_speaking_state(True)
+        
+        try:
+            import tempfile
+            
+            # Generate TTS audio
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            self.logger.info(f"Generating TTS for: {text[:50]}...")
+            result = await self.tts.speak_to_file(text, tmp_path)
+            
+            # Verify file was created
+            if not result or not os.path.exists(tmp_path):
+                self.logger.error(f"TTS file not created: {tmp_path}")
+                return
+            
+            # Wait for file to be fully written
+            import time
+            max_wait = 5.0
+            wait_interval = 0.1
+            waited = 0
+            
+            while waited < max_wait:
+                file_size = os.path.getsize(tmp_path)
+                if file_size > 0:
+                    # Check if file is still growing
+                    time.sleep(wait_interval)
+                    new_size = os.path.getsize(tmp_path)
+                    if new_size == file_size:
+                        break  # File is stable
+                waited += wait_interval
+                time.sleep(wait_interval)
+            
+            file_size = os.path.getsize(tmp_path)
+            self.logger.info(f"TTS file ready: {tmp_path} ({file_size} bytes)")
+            
+            if file_size == 0:
+                self.logger.error("TTS file is empty")
+                return
+            
+            # Play audio
+            success = await self._play_audio_file(voice_client, tmp_path)
+            
+            if success:
+                # Record response for loop detection
+                if guild_id:
+                    self.safety_guard.record_demi_response(guild_id, text)
+            
+            # Cleanup
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+                
+        except Exception as e:
+            self.logger.error(f"TTS error: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+        finally:
+            # Clear speaking state
+            self.safety_guard.set_speaking_state(False)
+    
     async def _process_utterance(self, session: VoiceSession, buffer: AudioBuffer):
         """Process completed utterance through STT.
         
@@ -665,6 +1050,16 @@ class DiscordVoiceClient:
         user = self.bot.get_user(user_id)
         user_name = str(user) if user else f"User_{user_id}"
         
+        # Log user speech
+        self.transcript_logger.log_user_speech(
+            text=text,
+            guild_id=session.guild_id,
+            channel_id=session.channel_id,
+            user_id=user_id,
+            username=user_name,
+            session_id=session.session_id
+        )
+        
         # Mark session as processing
         session.is_speaking = True
         
@@ -691,6 +1086,14 @@ class DiscordVoiceClient:
             
             self.logger.info(f"LLM response: '{response_text[:50]}...'")
             
+            # Log Demi's response
+            self.transcript_logger.log_demi_response(
+                text=response_text,
+                guild_id=session.guild_id,
+                channel_id=session.channel_id,
+                session_id=session.session_id
+            )
+            
             # Speak response via TTS
             await self._speak_response(
                 session.voice_client, 
@@ -702,6 +1105,15 @@ class DiscordVoiceClient:
             self.logger.error(f"Voice command processing error: {e}")
             # Play error message
             error_msg = "I'm sorry, I didn't catch that."
+            
+            # Log error response
+            self.transcript_logger.log_demi_response(
+                text=error_msg,
+                guild_id=session.guild_id,
+                channel_id=session.channel_id,
+                session_id=session.session_id
+            )
+            
             await self._speak_response(session.voice_client, error_msg, {})
         
         finally:
