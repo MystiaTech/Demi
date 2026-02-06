@@ -78,6 +78,37 @@ except ImportError:
     Sink = None
     MP3Sink = None
 
+# Configure logging to suppress Opus decode error spam
+import logging
+class OpusErrorFilter(logging.Filter):
+    """Filter to reduce Opus decode error spam in logs."""
+    
+    def __init__(self):
+        super().__init__()
+        self.error_count = 0
+        self.last_log_time = 0
+        self.log_interval = 60  # Log once per minute max
+        
+    def filter(self, record):
+        # Check if this is an Opus decode error
+        msg = record.getMessage()
+        if "opus_decode" in msg.lower() or "corrupted stream" in msg.lower():
+            self.error_count += 1
+            current_time = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+            
+            # Only allow log through every N errors or every interval
+            if self.error_count % 100 == 0 or (current_time - self.last_log_time) > self.log_interval:
+                record.msg = f"[Suppressed {self.error_count} errors] {record.msg}"
+                self.last_log_time = current_time
+                return True
+            return False
+        return True
+
+# Apply filter to discord voice logger
+discord_voice_logger = logging.getLogger("discord.voice")
+discord_voice_logger.addFilter(OpusErrorFilter())
+logger.info("Opus error filter installed to reduce log spam")
+
 
 class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
     """Custom audio sink for Speech-to-Text processing.
@@ -85,6 +116,10 @@ class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
     Receives audio data from Discord voice receive and processes it
     through STT pipeline.
     """
+    
+    # Error tracking for circuit breaker
+    MAX_ERRORS_PER_MINUTE = 60
+    CIRCUIT_BREAKER_COOLDOWN = 30  # seconds
     
     def __init__(self, voice_client: "DiscordVoiceClient", guild_id: int, *, filters=None):
         super().__init__(filters=filters)
@@ -94,6 +129,14 @@ class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
         self.audio_data: Dict[int, bytes] = {}
         self._loop = asyncio.get_event_loop()
         
+        # Error tracking
+        self._error_count = 0
+        self._error_window_start = datetime.now()
+        self._circuit_breaker_open = False
+        self._circuit_breaker_until = None
+        self._total_packets_received = 0
+        self._total_packets_processed = 0
+        
     def write(self, data: bytes, user_id: int):
         """Called when audio data is received from a user.
         
@@ -101,8 +144,19 @@ class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
             data: Raw audio data
             user_id: Discord user ID (int)
         """
+        self._total_packets_received += 1
+        
+        # Check circuit breaker
+        if self._check_circuit_breaker():
+            return
+        
         # Ignore bot's own voice
         if user_id == self.voice_client.bot.user.id:
+            return
+        
+        # Ignore empty data (possible Opus error)
+        if not data or len(data) < 10:
+            self._track_error("empty_packet")
             return
             
         if user_id not in self.audio_data:
@@ -111,6 +165,43 @@ class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
         
         # Process audio for this user (use threadsafe since called from DecodeManager thread)
         asyncio.run_coroutine_threadsafe(self._process_user_audio(user_id), self._loop)
+        self._total_packets_processed += 1
+    
+    def _check_circuit_breaker(self) -> bool:
+        """Check if circuit breaker is open (too many errors).
+        
+        Returns:
+            True if should skip processing (circuit open)
+        """
+        now = datetime.now()
+        
+        # Reset error window every minute
+        if (now - self._error_window_start).total_seconds() > 60:
+            if self._error_count > self.MAX_ERRORS_PER_MINUTE:
+                self.logger.warning(
+                    f"STT Sink: {self._error_count} errors in last minute, "
+                    f"opening circuit breaker for {self.CIRCUIT_BREAKER_COOLDOWN}s"
+                )
+                self._circuit_breaker_open = True
+                self._circuit_breaker_until = now + timedelta(seconds=self.CIRCUIT_BREAKER_COOLDOWN)
+            
+            self._error_count = 0
+            self._error_window_start = now
+        
+        # Check if circuit breaker cooldown has expired
+        if self._circuit_breaker_open:
+            if self._circuit_breaker_until and now > self._circuit_breaker_until:
+                self.logger.info("STT Sink: Circuit breaker closed, resuming audio processing")
+                self._circuit_breaker_open = False
+                self._circuit_breaker_until = None
+            else:
+                return True
+        
+        return False
+    
+    def _track_error(self, error_type: str):
+        """Track an error for circuit breaker logic."""
+        self._error_count += 1
         
     async def _process_user_audio(self, user_id: int):
         """Process accumulated audio for a user.
@@ -140,6 +231,24 @@ class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
     def cleanup(self):
         """Cleanup when recording stops."""
         self.audio_data.clear()
+        
+        # Log final stats
+        if self._total_packets_received > 0:
+            loss_rate = 1 - (self._total_packets_processed / self._total_packets_received)
+            self.logger.info(
+                f"STT Sink stats: {self._total_packets_processed}/{self._total_packets_received} "
+                f"packets processed ({loss_rate:.1%} loss), {self._error_count} errors"
+            )
+    
+    def get_stats(self) -> dict:
+        """Get processing statistics."""
+        return {
+            "packets_received": self._total_packets_received,
+            "packets_processed": self._total_packets_processed,
+            "packet_loss_rate": 1 - (self._total_packets_processed / max(self._total_packets_received, 1)),
+            "errors_in_window": self._error_count,
+            "circuit_breaker_open": self._circuit_breaker_open,
+        }
 
 
 @dataclass
