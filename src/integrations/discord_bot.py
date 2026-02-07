@@ -392,6 +392,10 @@ class DiscordBot(BasePlatform):
                 if message.author.bot:
                     return
 
+                # Skip ramble channel - it's for thoughts only, not chatting
+                if self.ramble_channel_id and str(message.channel.id) == self.ramble_channel_id:
+                    return
+
                 # Check if we should respond
                 should_respond = False
                 is_dm = isinstance(message.channel, discord.DMChannel)
@@ -444,6 +448,13 @@ class DiscordBot(BasePlatform):
                     self.logger.error(f"Invalid DISCORD_RAMBLE_CHANNEL_ID: {self.ramble_channel_id}")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize ramble task: {e}")
+
+            # Log channel configuration
+            if self.ramble_channel_id:
+                self.logger.info(
+                    f"Ramble channel configured: {self.ramble_channel_id} "
+                    f"(spontaneous thoughts only - no chatting in this channel)"
+                )
 
             # Log successful initialization
             self.logger.info(
