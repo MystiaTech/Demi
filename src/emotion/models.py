@@ -76,17 +76,16 @@ class EmotionalState:
             "defensiveness",
         ]
         for name in emotion_names:
-            floor = self._EMOTION_FLOORS.get(name, 0.1)
-            current = getattr(self, name)
+            value = getattr(self, name)
+            min_val = self._EMOTION_FLOORS.get(name, 0.1)
+            max_val = 1.0
 
-            # Clamp to [floor, 1.0]
-            if current < floor:
-                setattr(self, name, floor)
-            elif current > 1.0:
-                # Record momentum and clamp
-                excess = current - 1.0
-                self.momentum[name] = max(self.momentum[name], excess)
-                setattr(self, name, 1.0)
+            if value < min_val:
+                setattr(self, name, min_val)
+            elif value > max_val:
+                excess = value - max_val
+                self.momentum[name] += excess
+                setattr(self, name, max_val)
 
     def set_emotion(
         self, emotion_name: str, value: float, momentum_override: bool = False
@@ -103,10 +102,10 @@ class EmotionalState:
             raise ValueError(f"Unknown emotion: {emotion_name}")
 
         if momentum_override:
-            # Allow overflow, record momentum
+            # Allow overflow, record momentum with bounds checking
             if value > 1.0:
                 excess = value - 1.0
-                self.momentum[emotion_name] = max(self.momentum[emotion_name], excess)
+                self.momentum[emotion_name] = min(self.momentum[emotion_name] + excess, 1.0)
                 setattr(self, emotion_name, 1.0)
             else:
                 setattr(

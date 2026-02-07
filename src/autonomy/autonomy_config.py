@@ -22,8 +22,8 @@ class SelfModificationConfig:
     
     # Feature toggles
     enabled: bool = True
-    auto_apply_low_risk: bool = False  # Auto-apply low-risk changes
-    require_human_approval: bool = True  # Require approval for changes
+    auto_apply_low_risk: bool = True  # Auto-apply low-risk changes
+    require_human_approval: bool = False  # Full autonomy - no human approval required
     enable_git_integration: bool = True
     enable_validation: bool = True
     enable_emergency_healing: bool = True
@@ -41,7 +41,7 @@ class SelfModificationConfig:
     
     # Git settings
     auto_commit: bool = True
-    auto_merge: bool = False  # Auto-merge to main (dangerous)
+    auto_merge: bool = True  # Full autonomy - auto-merge to main
     branch_prefix: str = "demi/autonomy"
     commit_author_name: str = "Demi"
     commit_author_email: str = "self@demi.ai"

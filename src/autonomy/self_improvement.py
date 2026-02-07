@@ -228,6 +228,20 @@ class SelfImprovementSystem:
             
             logger.info(f"Code review complete: {len(suggestions)} suggestions")
             self.last_review_time = datetime.now(timezone.utc)
+            
+            # Auto-apply suggestions if enabled and no approval required
+            if not self.config.require_human_approval:
+                for suggestion in suggestions:
+                    should_auto_apply = (
+                        self.config.auto_apply_low_risk and 
+                        suggestion.priority in ['low', 'medium']
+                    ) or suggestion.priority == 'high' or suggestion.confidence > 0.9
+                    
+                    if should_auto_apply:
+                        logger.info(f"Auto-applying suggestion {suggestion.suggestion_id} "
+                                  f"(priority={suggestion.priority}, confidence={suggestion.confidence})")
+                        await self.apply_suggestion(suggestion)
+            
             return suggestions
             
         except Exception as e:

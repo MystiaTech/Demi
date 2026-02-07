@@ -104,16 +104,26 @@ class AutonomyCoordinator:
             autonomy_config = config.autonomy if hasattr(config, 'autonomy') else {}
             
             si_config = autonomy_config.get('self_improvement', {})
-            self.self_improvement.enabled = si_config.get('enabled', True)
+            self.self_improvement.config.enabled = si_config.get('enabled', True)
+            self.self_improvement.config.require_human_approval = si_config.get('require_human_approval', False)
+            self.self_improvement.config.auto_apply_low_risk = si_config.get('auto_apply_low_risk', True)
+            self.self_improvement.config.auto_merge = si_config.get('auto_merge', True)
             self.code_review_interval = si_config.get('code_review_interval', 1800)
             
             self.logger.info(
-                f"Self-improvement config: enabled={self.self_improvement.enabled}, "
-                f"interval={self.code_review_interval}s"
+                f"Self-improvement config: enabled={self.self_improvement.config.enabled}, "
+                f"interval={self.code_review_interval}s, "
+                f"require_approval={self.self_improvement.config.require_human_approval}, "
+                f"auto_apply={self.self_improvement.config.auto_apply_low_risk}, "
+                f"auto_merge={self.self_improvement.config.auto_merge}"
             )
         except Exception as e:
             self.logger.warning(f"Could not load self-improvement config: {e}")
-            self.self_improvement.enabled = True
+            # Default to full autonomy
+            self.self_improvement.config.enabled = True
+            self.self_improvement.config.require_human_approval = False
+            self.self_improvement.config.auto_apply_low_risk = True
+            self.self_improvement.config.auto_merge = True
             self.code_review_interval = 1800
 
     def start_autonomy(self) -> bool:

@@ -201,6 +201,139 @@ class MobileAPIServer:
                 logger.error(f"Get self-improvement status failed: {e}")
                 return {"enabled": False, "error": str(e)}
 
+        @self.app.post("/api/self-improvement/review")
+        async def trigger_self_improvement_review():
+            """Trigger an immediate code review and auto-apply suggestions.
+            
+            Returns:
+                Results of the self-improvement review
+            """
+            try:
+                if not self.conductor or not hasattr(self.conductor, 'autonomy_coordinator'):
+                    return {
+                        "success": False,
+                        "message": "Autonomy coordinator not available"
+                    }
+                
+                autonomy = self.conductor.autonomy_coordinator
+                if not hasattr(autonomy, 'self_improvement'):
+                    return {
+                        "success": False,
+                        "message": "Self-improvement not initialized"
+                    }
+                
+                logger.info("Manual self-improvement review triggered via API")
+                
+                # Run code review
+                suggestions = await autonomy.self_improvement.run_code_review()
+                
+                return {
+                    "success": True,
+                    "suggestions_found": len(suggestions),
+                    "suggestions": [
+                        {
+                            "id": s.suggestion_id,
+                            "file": s.file_path,
+                            "description": s.description,
+                            "priority": s.priority,
+                            "confidence": s.confidence,
+                            "status": s.status.value
+                        }
+                        for s in suggestions
+                    ]
+                }
+            except Exception as e:
+                logger.error(f"Self-improvement review failed: {e}")
+                return {"success": False, "error": str(e)}
+
+        @self.app.post("/api/self-improvement/apply/{suggestion_id}")
+        async def apply_suggestion(suggestion_id: str):
+            """Apply a specific improvement suggestion.
+            
+            Args:
+                suggestion_id: ID of suggestion to apply
+                
+            Returns:
+                Result of the application
+            """
+            try:
+                if not self.conductor or not hasattr(self.conductor, 'autonomy_coordinator'):
+                    return {
+                        "success": False,
+                        "message": "Autonomy coordinator not available"
+                    }
+                
+                autonomy = self.conductor.autonomy_coordinator
+                if not hasattr(autonomy, 'self_improvement'):
+                    return {
+                        "success": False,
+                        "message": "Self-improvement not initialized"
+                    }
+                
+                # Find the suggestion
+                suggestion = autonomy.self_improvement.suggestions.get(suggestion_id)
+                if not suggestion:
+                    return {
+                        "success": False,
+                        "message": f"Suggestion {suggestion_id} not found"
+                    }
+                
+                # Apply it
+                result = await autonomy.self_improvement.apply_suggestion(suggestion)
+                
+                return {
+                    "success": result,
+                    "suggestion_id": suggestion_id,
+                    "file": suggestion.file_path,
+                    "status": suggestion.status.value,
+                    "error": suggestion.error_message
+                }
+            except Exception as e:
+                logger.error(f"Apply suggestion failed: {e}")
+                return {"success": False, "error": str(e)}
+
+        @self.app.post("/api/self-improvement/apply-pending")
+        async def apply_all_pending_suggestions():
+            """Apply all pending improvement suggestions.
+            
+            Returns:
+                Results of applying all pending suggestions
+            """
+            try:
+                if not self.conductor or not hasattr(self.conductor, 'autonomy_coordinator'):
+                    return {
+                        "success": False,
+                        "message": "Autonomy coordinator not available"
+                    }
+                
+                autonomy = self.conductor.autonomy_coordinator
+                if not hasattr(autonomy, 'self_improvement'):
+                    return {
+                        "success": False,
+                        "message": "Self-improvement not initialized"
+                    }
+                
+                pending = autonomy.self_improvement.get_pending_suggestions()
+                results = []
+                
+                for suggestion in pending:
+                    result = await autonomy.self_improvement.apply_suggestion(suggestion)
+                    results.append({
+                        "suggestion_id": suggestion.suggestion_id,
+                        "file": suggestion.file_path,
+                        "success": result,
+                        "status": suggestion.status.value
+                    })
+                
+                return {
+                    "success": True,
+                    "applied_count": len(results),
+                    "results": results
+                }
+            except Exception as e:
+                logger.error(f"Apply all pending suggestions failed: {e}")
+                return {"success": False, "error": str(e)}
+
         @self.app.get("/audio/{filename}")
         async def serve_audio(filename: str):
             """Serve audio file for lip sync.

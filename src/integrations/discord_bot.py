@@ -34,18 +34,8 @@ except ImportError:
     VoiceSession = None
 
 
-# Emotion to Discord color mapping
-EMOTION_COLORS = {
-    "loneliness": discord.Color.purple(),  # 0x9370DB
-    "excitement": discord.Color.green(),  # 0x2ECC71
-    "frustration": discord.Color.red(),  # 0xE74C3C
-    "affection": discord.Color.magenta(),  # 0xFF1493 (hot pink)
-    "confidence": discord.Color.blue(),  # 0x3498DB
-    "curiosity": discord.Color.teal(),  # 0x1ABC9C (cyan)
-    "jealousy": discord.Color.orange(),  # 0xE67E22
-    "vulnerability": discord.Color.magenta(),  # 0xD946EF
-    "defensiveness": discord.Color.dark_gray(),  # 0x36393B
-}
+# Import emotion colors from centralized module
+from src.integrations.emotion_colors import EMOTION_COLORS, get_emotion_color
 
 
 def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Color]:
@@ -66,7 +56,7 @@ def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Co
     emotion_name = dominant[0]
     
     # Get color, default to purple if unknown
-    color = EMOTION_COLORS.get(emotion_name, discord.Color.purple())
+    color = get_emotion_color(emotion_name)
     
     return emotion_name, color
 
@@ -691,7 +681,7 @@ class DiscordBot(BasePlatform):
                     confirm_embed = discord.Embed(
                         title="💭 Ramble Posted",
                         description=f"Posted to <#{self.ramble_task.ramble_channel_id}> with emotion: **{emotion}**",
-                        color=EMOTION_COLORS.get(emotion, discord.Color.purple())
+                        color=get_emotion_color(emotion)
                     )
                     await ctx.respond(embed=confirm_embed, ephemeral=True)
                 else:
@@ -742,6 +732,10 @@ class DiscordBot(BasePlatform):
                     ephemeral=True
                 )
             
+            # Defer response immediately to prevent Discord timeout
+            # TTS initialization/synthesis can take longer than 3 seconds
+            await ctx.defer(ephemeral=True)
+            
             try:
                 # Log the command
                 self.logger.info(f"TTS command from {ctx.author}: {message[:50]}...")
@@ -750,7 +744,7 @@ class DiscordBot(BasePlatform):
                 from src.integrations.discord_voice import HAS_TTS
                 
                 if not HAS_TTS:
-                    return await ctx.respond(
+                    return await ctx.followup.send(
                         "❌ TTS is not available. Voices not downloaded.", 
                         ephemeral=True
                     )
@@ -769,9 +763,9 @@ class DiscordBot(BasePlatform):
                         color=discord.Color.green()
                     )
                     embed.set_footer(text=f"Requested by {ctx.author.display_name}")
-                    await ctx.respond(embed=embed, ephemeral=True)
+                    await ctx.followup.send(embed=embed, ephemeral=True)
                 else:
-                    await ctx.respond("❌ Failed to speak. Check logs.", ephemeral=True)
+                    await ctx.followup.send("❌ Failed to speak. Check logs.", ephemeral=True)
                     
             except Exception as e:
                 self.logger.error(f"Say command error: {e}")

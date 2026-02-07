@@ -668,12 +668,37 @@ class DiscordVoiceClient:
                 "Install discord.py with voice receive support."
             )
         
+        # Pre-initialize TTS backend in background to avoid first-use delay
+        # This prevents Discord "application did not respond" timeouts on first /say
+        if HAS_TTS and self.tts:
+            asyncio.create_task(self._preinitialize_tts())
+        
         # Play join sound
         await self._play_join_sound(voice_client)
         
         # Start listening loop for session management
         task = asyncio.create_task(self._voice_listen_loop(voice_client))
         self._listen_tasks[guild_id] = task
+    
+    async def _preinitialize_tts(self):
+        """Pre-initialize TTS backend to avoid delay on first use."""
+        try:
+            self.logger.info("Pre-initializing TTS backend...")
+            # Trigger a dummy synthesis to initialize the backend
+            # This will download models if needed
+            from src.voice.tts_base import TTSBackend
+            if self.tts and hasattr(self.tts, '_backend') and self.tts._backend:
+                if hasattr(self.tts._backend, '_initialized') and not self.tts._backend._initialized:
+                    await self.tts._backend.initialize()
+                    self.logger.info(f"TTS backend pre-initialized: {self.tts.get_backend()}")
+                else:
+                    self.logger.debug("TTS backend already initialized")
+            else:
+                # For legacy backends (piper, pyttsx3), no async init needed
+                self.logger.debug("TTS backend does not require pre-initialization")
+        except Exception as e:
+            # Don't fail voice connect if TTS init fails - will retry on first use
+            self.logger.warning(f"TTS pre-initialization failed (will retry on first use): {e}")
     
     async def _on_recording_finished(self, sink: STTSink, *args):
         """Called when voice recording stops.
