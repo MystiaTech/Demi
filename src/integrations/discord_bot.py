@@ -936,11 +936,15 @@ class DiscordBot(BasePlatform):
 
                 # Record metrics
                 response_time_ms = (time.time() - start_time) * 1000
-                from src.monitoring.metrics import get_discord_metrics
-                discord_metrics = get_discord_metrics()
-                discord_metrics.record_message_processed(
-                    response_time_ms=response_time_ms
-                )
+                from src.monitoring.metrics import get_platform_metrics
+                platform_metrics = get_platform_metrics()
+                if platform_metrics:
+                    platform_metrics.record_message(
+                        platform="discord",
+                        response_time_ms=response_time_ms,
+                        message_length=len(response_data.get("content", "")),
+                        success=True,
+                    )
             elif response_data and response_data.get("error"):
                 # Handle error from conductor
                 error = response_data.get("error")

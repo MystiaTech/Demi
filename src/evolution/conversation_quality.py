@@ -211,9 +211,18 @@ class ConversationQualityAnalyzer:
         
         # Check if dominant emotion is reflected
         if emotional_state:
-            # Find dominant emotion
-            dominant = max(emotional_state.items(), key=lambda x: x[1])
-            emotion_name, emotion_value = dominant
+            # Filter to only numeric emotion values (exclude momentum dict, last_updated string, etc.)
+            numeric_emotions = {
+                k: v for k, v in emotional_state.items() 
+                if isinstance(v, (int, float)) and k not in ('momentum', 'last_updated')
+            }
+            
+            if numeric_emotions:
+                # Find dominant emotion
+                dominant = max(numeric_emotions.items(), key=lambda x: x[1])
+                emotion_name, emotion_value = dominant
+            else:
+                emotion_name, emotion_value = None, 0.0
             
             # Check if response shows that emotion
             indicators = self.EMOTION_INDICATORS.get(emotion_name, [])
