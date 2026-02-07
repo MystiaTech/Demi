@@ -192,14 +192,20 @@ class RambleTask:
         """Generate and post a ramble."""
         try:
             prompt_addendum = self._get_ramble_prompt(trigger, emotion_state_obj)
-            messages = [{"role": "user", "content": prompt_addendum}]
             
-            response = await self.conductor.request_inference(messages)
+            # Use request_inference_for_platform with system user
+            response_data = await self.conductor.request_inference_for_platform(
+                platform="discord",
+                user_id="system",
+                content=prompt_addendum,
+                context={
+                    "conversation_id": f"discord_ramble_{self.ramble_channel_id}",
+                    "trigger": trigger,
+                    "is_ramble": True,
+                },
+            )
             
-            if isinstance(response, dict):
-                content = response.get("content", "")
-            else:
-                content = response
+            content = response_data.get("content", "") if response_data else ""
             
             # Post to channel
             channel = self.bot.get_channel(self.ramble_channel_id)
@@ -658,14 +664,19 @@ class DiscordBot(BasePlatform):
                 
                 # Generate ramble content
                 prompt_addendum = self.ramble_task._get_ramble_prompt(emotion, emotion_state_obj)
-                messages = [{"role": "user", "content": prompt_addendum}]
-                response = await self.conductor.request_inference(messages)
                 
-                # Extract content
-                if isinstance(response, dict):
-                    content = response.get("content", "")
-                else:
-                    content = response
+                response_data = await self.conductor.request_inference_for_platform(
+                    platform="discord",
+                    user_id="system",
+                    content=prompt_addendum,
+                    context={
+                        "conversation_id": f"discord_ramble_{self.ramble_task.ramble_channel_id}",
+                        "trigger": emotion,
+                        "is_ramble": True,
+                    },
+                )
+                
+                content = response_data.get("content", "") if response_data else ""
                 
                 # Post to channel
                 channel = self.bot.get_channel(self.ramble_task.ramble_channel_id)
