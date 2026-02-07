@@ -31,7 +31,11 @@ cp .env.example .env
 docker-compose up -d
 
 # 4. Download LLM model (wait 30s for Ollama to start)
-docker-compose exec ollama ollama pull llama3.2:1b
+# Recommended for Demi: l3-8b-stheno-v3.2-iq-imatrix (best personality)
+docker-compose exec ollama ollama pull l3-8b-stheno-v3.2-iq-imatrix
+
+# Alternative (lightweight): llama3.2:1b
+# docker-compose exec ollama ollama pull llama3.2:1b
 ```
 
 **Access:**

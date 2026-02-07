@@ -50,10 +50,23 @@ This starts:
 
 ### Step 4: Download an LLM Model
 
+**Recommended for Demi:** `l3-8b-stheno-v3.2-iq-imatrix`
+- Best personality match (creative, roleplay-focused, uncensored)
+- 8B parameters, ~5GB download
+- IQ-imatrix quantized for quality
+
 ```bash
 # Wait 30 seconds for Ollama to start, then:
-docker-compose exec ollama ollama pull llama3.2:1b
+docker-compose exec ollama ollama pull l3-8b-stheno-v3.2-iq-imatrix
 ```
+
+**Alternative models:**
+| Model | Size | Best For |
+|-------|------|----------|
+| `l3-8b-stheno-v3.2-iq-imatrix` | ~5GB | **Recommended** - Best personality |
+| `llama3.2:1b` | ~1.3GB | Lightweight, faster responses |
+| `llama3.2:3b` | ~2GB | Balanced quality/speed |
+| `mistral` | ~4GB | General purpose |
 
 ### Step 5: Access Demi
 
@@ -305,12 +318,15 @@ docker-compose down -v
 # List models
 curl http://localhost:11434/api/tags
 
-# Pull a different model
-docker-compose exec ollama ollama pull mistral
+# Pull recommended model (best for Demi)
+docker-compose exec ollama ollama pull l3-8b-stheno-v3.2-iq-imatrix
+
+# Pull alternative models
 docker-compose exec ollama ollama pull llama3.2:3b
+docker-compose exec ollama ollama pull mistral
 
 # Run a model
-docker-compose exec ollama ollama run llama3.2:1b "Hello!"
+docker-compose exec ollama ollama run l3-8b-stheno-v3.2-iq-imatrix "Hello!"
 ```
 
 ---
@@ -355,8 +371,8 @@ curl http://localhost:11434/api/tags
 # Restart Ollama
 docker-compose restart ollama
 
-# Wait 30 seconds, then pull model again
-docker-compose exec ollama ollama pull llama3.2:1b
+# Wait 30 seconds, then pull recommended model
+docker-compose exec ollama ollama pull l3-8b-stheno-v3.2-iq-imatrix
 ```
 
 ### Flutter "Connection refused"

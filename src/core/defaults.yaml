@@ -98,6 +98,10 @@ llm:
   enable_fallback: true  # Enable automatic fallback to LMStudio if Ollama unavailable
   ollama:
     base_url: "http://localhost:11434"  # Change to your Windows IP if using WSL (e.g., http://192.168.x.x:11434)
+    # RECOMMENDED MODEL: l3-8b-stheno-v3.2-iq-imatrix
+    # Best for Demi's personality: creative, roleplay-focused, uncensored
+    # Download: ollama pull l3-8b-stheno-v3.2-iq-imatrix
+    # Alternative (lightweight): llama3.2:1b
     model: "llama3.2:1b"
     timeout: 30
     temperature: 0.7

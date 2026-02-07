@@ -17,8 +17,8 @@ cp .env.example .env
 # Start
 docker-compose up -d
 
-# Download LLM (wait 30s for Ollama to start)
-docker-compose exec ollama ollama pull llama3.2:1b
+# Download recommended LLM (wait 30s for Ollama to start)
+docker-compose exec ollama ollama pull l3-8b-stheno-v3.2-iq-imatrix
 ```
 
 **Access:**
