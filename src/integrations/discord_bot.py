@@ -882,44 +882,80 @@ class DiscordBot(BasePlatform):
             )
 
             # Route to conductor
-            if self.conductor:
-                # Get or create conversation ID
-                conversation_id = f"discord_{channel_id}"
+            if not self.conductor:
+                self.logger.error("Conductor not available - cannot process message")
+                await message.channel.send("I'm not ready to talk right now... wait a sec?")
+                return
+            
+            # Check if LLM is available
+            if hasattr(self.conductor, 'llm_available') and not self.conductor.llm_available:
+                self.logger.warning("LLM not available - cannot process message")
+                await message.channel.send("My mind is a bit cloudy... can you try again in a moment?")
+                return
+            
+            # Get or create conversation ID
+            conversation_id = f"discord_{channel_id}"
 
-                # Route through conductor using request_inference_for_platform
-                response_data = await self.conductor.request_inference_for_platform(
-                    platform="discord",
-                    user_id=user_id,
-                    content=content,
-                    context={
-                        "conversation_id": conversation_id,
-                        "username": username,
-                        "guild_id": guild_id,
-                        "channel_id": channel_id,
-                        "is_dm": is_dm,
-                    },
+            self.logger.info(f"Sending message to conductor: user={username}, content_length={len(content)}")
+            
+            # Route through conductor using request_inference_for_platform
+            response_data = await self.conductor.request_inference_for_platform(
+                platform="discord",
+                user_id=user_id,
+                content=content,
+                context={
+                    "conversation_id": conversation_id,
+                    "username": username,
+                    "guild_id": guild_id,
+                    "channel_id": channel_id,
+                    "is_dm": is_dm,
+                },
+            )
+
+            self.logger.info(f"Got response from conductor: {response_data is not None}")
+
+            # Format and send response
+            if response_data and response_data.get("content"):
+                # Calculate response time
+                start_time = time.time()
+
+                # Send response
+                embed = format_response_as_embed(response_data["content"], "Demi")
+                await message.channel.send(embed=embed)
+
+                # Record metrics
+                response_time_ms = (time.time() - start_time) * 1000
+                from src.monitoring.metrics import get_discord_metrics
+                discord_metrics = get_discord_metrics()
+                discord_metrics.record_message_processed(
+                    response_time_ms=response_time_ms
                 )
-
-                # Format and send response
-                if response_data and response_data.get("content"):
-                    # Calculate response time
-                    start_time = time.time()
-
-                    # Send response
-                    embed = format_response_as_embed(response_data["content"], "Demi")
-                    await message.channel.send(embed=embed)
-
-                    # Record metrics
-                    response_time_ms = (time.time() - start_time) * 1000
-                    from src.monitoring.metrics import get_discord_metrics
-                    discord_metrics = get_discord_metrics()
-                    discord_metrics.record_message_processed(
-                        response_time_ms=response_time_ms
-                    )
+            elif response_data and response_data.get("error"):
+                # Handle error from conductor
+                error = response_data.get("error")
+                self.logger.error(f"Conductor returned error: {error}")
+                await message.channel.send("I'm having trouble thinking clearly... try again?")
+            else:
+                self.logger.error(f"Empty response from conductor: {response_data}")
+                await message.channel.send("I... drew a blank. What were you saying?")
 
         except Exception as e:
+            import traceback
             self.logger.error(f"Error handling Discord message: {e}")
-            await message.channel.send("I encountered an error processing your message.")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Give more specific error message based on the error
+            error_msg = str(e).lower()
+            if "none" in error_msg or "'nonetype'" in error_msg:
+                user_message = "I'm not fully initialized yet... give me a moment."
+            elif "llm" in error_msg or "ollama" in error_msg or "lmstudio" in error_msg:
+                user_message = "My thoughts are a bit fuzzy right now... try again in a moment?"
+            elif "timeout" in error_msg:
+                user_message = "I got lost in thought... can you repeat that?"
+            else:
+                user_message = "I encountered an error processing your message."
+            
+            await message.channel.send(user_message)
 
     async def start(self) -> bool:
         """Start Discord bot connection.
