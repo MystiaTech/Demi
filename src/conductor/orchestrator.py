@@ -273,37 +273,72 @@ class Conductor:
                 self._logger.error(f"emotion_decay_startup_failed: {str(e)}")
                 return False
 
-            # Step 4.5: Initialize LLM and check Ollama health
-            self._logger.info("Checking LLM (Ollama) availability...")
+            # Step 4.5: Initialize LLM and check provider health
+            import os
+            prefer_lmstudio = os.getenv("PREFER_LMSTUDIO", "false").lower() in ("true", "1", "yes")
+            
+            if prefer_lmstudio:
+                self._logger.info("Checking LLM (LM Studio) availability...")
+            else:
+                self._logger.info("Checking LLM (Ollama) availability...")
+            
             ollama_url = self._config.lm.get("ollama", {}).get("base_url", "http://localhost:11434")
+            lmstudio_url = self._config.lm.get("lmstudio", {}).get("base_url", "http://localhost:1234")
+            
             try:
                 llm_health = await self.llm.health_check()
                 if llm_health:
                     self.llm_available = True
-                    self._logger.info(f"✅ LLM: Ollama online at {ollama_url}")
-                    print(f"✅ Ollama is reachable at {ollama_url}")
+                    # Check which provider is actually being used
+                    active_provider = getattr(self.llm, '_active_provider', 'unknown')
+                    if active_provider == "lmstudio":
+                        self._logger.info(f"✅ LLM: LM Studio online at {lmstudio_url}")
+                        print(f"✅ LM Studio is reachable at {lmstudio_url}")
+                    else:
+                        self._logger.info(f"✅ LLM: Ollama online at {ollama_url}")
+                        print(f"✅ Ollama is reachable at {ollama_url}")
                 else:
                     self.llm_available = False
-                    self._logger.warning(
-                        f"❌ LLM: Ollama not responding at {ollama_url}\n"
-                        f"   Make sure Ollama is running and accessible.\n"
-                        f"   Set OLLAMA_BASE_URL environment variable if using different address."
-                    )
-                    print(f"\n{'='*70}")
-                    print(f"❌ OLLAMA NOT REACHABLE")
-                    print(f"   URL: {ollama_url}")
-                    print(f"   Demi can respond but WITHOUT intelligence (fallback mode)")
-                    print(f"   To fix:")
-                    print(f"   1. Start Ollama: ollama serve")
-                    print(f"   2. For Windows: Set OLLAMA_HOST=0.0.0.0:11434")
-                    print(f"   3. Update .env if using different IP/port")
-                    print(f"{'='*70}\n")
+                    if prefer_lmstudio:
+                        self._logger.warning(
+                            f"❌ LLM: LM Studio not responding at {lmstudio_url}\n"
+                            f"   Make sure LM Studio is running with server enabled.\n"
+                            f"   Set LMSTUDIO_BASE_URL environment variable if using different address."
+                        )
+                        print(f"\n{'='*70}")
+                        print(f"❌ LM STUDIO NOT REACHABLE")
+                        print(f"   URL: {lmstudio_url}")
+                        print(f"   Demi can respond but WITHOUT intelligence (fallback mode)")
+                        print(f"   To fix:")
+                        print(f"   1. Start LM Studio")
+                        print(f"   2. Enable server: Settings > Enable API Server")
+                        print(f"   3. Check port 1234 is accessible")
+                        print(f"{'='*70}\n")
+                    else:
+                        self._logger.warning(
+                            f"❌ LLM: Ollama not responding at {ollama_url}\n"
+                            f"   Make sure Ollama is running and accessible.\n"
+                            f"   Set OLLAMA_BASE_URL environment variable if using different address."
+                        )
+                        print(f"\n{'='*70}")
+                        print(f"❌ OLLAMA NOT REACHABLE")
+                        print(f"   URL: {ollama_url}")
+                        print(f"   Demi can respond but WITHOUT intelligence (fallback mode)")
+                        print(f"   To fix:")
+                        print(f"   1. Start Ollama: ollama serve")
+                        print(f"   2. For Windows: Set OLLAMA_HOST=0.0.0.0:11434")
+                        print(f"   3. Update .env if using different IP/port")
+                        print(f"{'='*70}\n")
             except Exception as e:
                 self.llm_available = False
                 self._logger.warning(f"LLM health check error: {str(e)}")
                 print(f"\n{'='*70}")
-                print(f"❌ OLLAMA CONNECTION ERROR")
-                print(f"   URL: {ollama_url}")
+                if prefer_lmstudio:
+                    print(f"❌ LM STUDIO CONNECTION ERROR")
+                    print(f"   URL: {lmstudio_url}")
+                else:
+                    print(f"❌ OLLAMA CONNECTION ERROR")
+                    print(f"   URL: {ollama_url}")
                 print(f"   Error: {str(e)}")
                 print(f"   Demi can respond but WITHOUT intelligence (fallback mode)")
                 print(f"{'='*70}\n")
