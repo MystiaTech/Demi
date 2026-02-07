@@ -875,13 +875,13 @@ class DiscordBot(BasePlatform):
                 # Get or create conversation ID
                 conversation_id = f"discord_{channel_id}"
 
-                # Route through conductor
-                response = await self.conductor.route_message(
-                    content=content,
+                # Route through conductor using request_inference_for_platform
+                response_data = await self.conductor.request_inference_for_platform(
                     platform="discord",
                     user_id=user_id,
-                    conversation_id=conversation_id,
-                    metadata={
+                    content=content,
+                    context={
+                        "conversation_id": conversation_id,
                         "username": username,
                         "guild_id": guild_id,
                         "channel_id": channel_id,
@@ -890,12 +890,12 @@ class DiscordBot(BasePlatform):
                 )
 
                 # Format and send response
-                if response:
+                if response_data and response_data.get("content"):
                     # Calculate response time
                     start_time = time.time()
 
                     # Send response
-                    embed = format_response_as_embed(response, "Demi")
+                    embed = format_response_as_embed(response_data["content"], "Demi")
                     await message.channel.send(embed=embed)
 
                     # Record metrics

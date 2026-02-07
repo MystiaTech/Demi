@@ -153,9 +153,14 @@ class PiperTTSConfig:
     streaming: bool = True
     
     def __post_init__(self):
-        """Validate configuration."""
+        """Validate configuration and check for environment variables."""
         self.rate = max(0.5, min(2.0, self.rate))
         self.volume = max(0.0, min(1.0, self.volume))
+        
+        # Check for PIPER_VOICES_DIR environment variable
+        env_voices_dir = os.environ.get("PIPER_VOICES_DIR")
+        if env_voices_dir:
+            self.voices_dir = env_voices_dir
 
 
 class PiperTTS:

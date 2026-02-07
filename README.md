@@ -15,41 +15,31 @@ Demi is a local-first AI companion that feels like a real person. She has emotio
 
 ---
 
-## 📚 Documentation
+## 🚀 Quick Start
 
-**→ [Full Documentation Index](docs/README.md)** ← Start here!
-
-Quick links:
-- **[Getting Started](docs/guides/00_START_HERE.md)** - Navigation guide
-- **[Docker Quick Start](docs/setup/QUICK_START.md)** - Get running in 5 minutes
-- **[Avatar Setup](docs/guides/VRM_QUICK_START.md)** - Add 3D avatar
-- **[Discord Bot](docs/setup/DISCORD_SETUP.md)** - Connect Discord
-- **[API Reference](docs/api/)** - Endpoint documentation
-- **[Troubleshooting](docs/guides/TROUBLESHOOTING.md)** - Common issues
-
----
-
-## 🚀 Quick Start (Docker)
+Get Demi running in 5 minutes with Docker:
 
 ```bash
-# Clone
+# 1. Clone
 git clone https://github.com/mystiatech/Demi.git
 cd Demi
 
-# Setup environment
+# 2. Configure
 cp .env.example .env
-# Edit .env with your Discord token (optional)
 
-# Start Docker
+# 3. Start
 docker-compose up -d
 
-# Access
-# Dashboard:   http://localhost:8080
-# Mobile API:  http://localhost:8081
-# Ollama LLM:  http://localhost:11434
+# 4. Download LLM model (wait 30s for Ollama to start)
+docker-compose exec ollama ollama pull llama3.2:1b
 ```
 
-**For detailed instructions:** See [Docker Setup Guide](docs/setup/DOCKER_SETUP.md)
+**Access:**
+- Dashboard: http://localhost:8080
+- Mobile API: http://localhost:8081
+- Ollama: http://localhost:11434
+
+📖 **[Full Installation Guide →](INSTALL.md)** | 📱 **[Flutter App Setup →](flutter_app/README.md)**
 
 ---
 
@@ -79,7 +69,7 @@ docker-compose up -d
 ├─────────────────────────────────────────┤
 │  Emotion │ LLM │ Autonomy              │
 ├─────────────────────────────────────────┤
-│           SQLite                        │
+│           PostgreSQL                    │
 └─────────────────────────────────────────┘
 ```
 
@@ -93,7 +83,24 @@ docker-compose up -d
 | CPU | 4 cores | 8+ cores |
 | Disk | 10 GB | 20+ GB |
 
-**Software:** Python 3.10+, Ollama, FFmpeg (voice)
+---
+
+## 📚 Documentation
+
+**Getting Started:**
+- **[Installation Guide](INSTALL.md)** - Complete setup instructions (Docker, Manual, Flutter)
+- **[Docker Setup](docs/setup/DOCKER_SETUP.md)** - Detailed Docker configuration
+- **[Discord Setup](docs/setup/DISCORD_SETUP.md)** - Connect Discord bot
+
+**Mobile App:**
+- **[Flutter App README](flutter_app/README.md)** - Mobile app setup
+- **[Mobile API](docs/api/MOBILE_API.md)** - API endpoints
+
+**Advanced:**
+- **[Full Documentation Index](docs/README.md)** - All documentation
+- **[Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)** - System design
+- **[Contributing](CONTRIBUTING.md)** - Development guidelines
+- **[Security](SECURITY.md)** - Security practices
 
 ---
 
@@ -113,57 +120,16 @@ Demi: Oh, how the mortal returns. What brings you to seek the
 
 ---
 
-## 🛠️ Development
-
-```bash
-# Setup
-git clone https://giteas.fullmooncyberworks.com/mystiatech/Demi.git
-cd Demi
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Test
-pytest -v
-
-# Run
-python main.py --log-level DEBUG
-```
-
----
-
-## 🔒 Security
-
-- No cloud APIs (local-only)
-- JWT authentication
-- CORS configured
-- No sensitive data in logs
-
-See [SECURITY.md](SECURITY.md).
-
----
-
-## 📝 Configuration
-
-Key environment variables (see `.env.example`):
-
-```bash
-DISCORD_BOT_TOKEN=your-token
-JWT_SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-JWT_REFRESH_SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-```
-
----
-
 ## 🐛 Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| Ollama refused | Run `ollama serve` |
-| Port in use | `lsof -i :8000` then `kill -9 <PID>` |
-| Bot not responding | Check token & Message Content Intent |
+| Ollama refused | Run `docker-compose restart ollama`, wait 30s |
+| Port in use | Change port in `docker-compose.yml` or `kill -9 <PID>` |
+| Bot not responding | Check token & Message Content Intent in Discord Dev Portal |
+| Flutter connection refused | Use your computer's IP, not localhost |
 
-See [Maintenance Guide](docs/deployment/maintenance.md) for more.
+See [Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md) for more.
 
 ---
 

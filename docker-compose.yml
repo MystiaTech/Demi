@@ -31,6 +31,8 @@ services:
       DATABASE_URL: postgresql://demi:demi_secure_password@postgres:5432/demi
       OLLAMA_BASE_URL: http://ollama:11434
       PIPER_VOICES_DIR: /app/voices/piper
+      COQUI_SPEAKER_WAV: ${COQUI_SPEAKER_WAV:-}
+      COQUI_TOS_AGREED: "1"  # Auto-accept Coqui non-commercial license terms
       PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}

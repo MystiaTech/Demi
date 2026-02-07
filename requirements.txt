@@ -59,6 +59,8 @@ pyttsx3>=2.90  # Cross-platform TTS (fallback)
 # onnxruntime-gpu>=1.16.0; sys_platform == 'linux'  # GPU acceleration for Piper (Linux)
 # onnxruntime>=1.16.0; sys_platform != 'linux'  # CPU fallback for other platforms
 sounddevice>=0.4.6  # Audio playback for Piper TTS
+TTS>=0.22.0  # Coqui TTS for voice cloning (XTTS-v2)
+torch>=2.0.0  # Required for Coqui TTS
 g2p_en>=2.1.0  # Grapheme-to-Phoneme for lip sync
 
 # Voice I/O (Phase 08)
@@ -74,3 +76,8 @@ pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
 black>=23.0.0
 pyyaml>=6.0
+
+librosa
+scipy 
+soundfile 
+pyloudnorm

@@ -19,6 +19,7 @@ import audioop
 import io
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Callable
 from datetime import datetime, timedelta
@@ -80,34 +81,56 @@ except ImportError:
 
 # Configure logging to suppress Opus decode error spam
 import logging
+
+logger = get_logger()  # Module-level logger
+
 class OpusErrorFilter(logging.Filter):
     """Filter to reduce Opus decode error spam in logs."""
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
     def __init__(self):
+        if OpusErrorFilter._initialized:
+            return
         super().__init__()
         self.error_count = 0
-        self.last_log_time = 0
-        self.log_interval = 60  # Log once per minute max
+        self.last_log_time = time.time()
+        self.log_interval = 60
+        self.suppressed_messages = [
+            "opus_decode", "corrupted stream", "error has happened in opus",
+            "error occurred while decoding opus", "opus frame"
+        ]
+        OpusErrorFilter._initialized = True
         
     def filter(self, record):
-        # Check if this is an Opus decode error
-        msg = record.getMessage()
-        if "opus_decode" in msg.lower() or "corrupted stream" in msg.lower():
-            self.error_count += 1
-            current_time = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
-            
-            # Only allow log through every N errors or every interval
-            if self.error_count % 100 == 0 or (current_time - self.last_log_time) > self.log_interval:
-                record.msg = f"[Suppressed {self.error_count} errors] {record.msg}"
-                self.last_log_time = current_time
-                return True
-            return False
+        msg = record.getMessage().lower()
+        for suppress_msg in self.suppressed_messages:
+            if suppress_msg in msg:
+                self.error_count += 1
+                current_time = time.time()
+                if self.error_count % 100 == 0 or (current_time - self.last_log_time) > self.log_interval:
+                    record.msg = f"[Suppressed {self.error_count} Opus errors] {record.getMessage()}"
+                    self.last_log_time = current_time
+                    return True
+                return False
         return True
 
-# Apply filter to discord voice logger
-discord_voice_logger = logging.getLogger("discord.voice")
-discord_voice_logger.addFilter(OpusErrorFilter())
-logger.info("Opus error filter installed to reduce log spam")
+# Apply filter to multiple discord loggers
+_opus_filter = OpusErrorFilter()
+for _logger_name in ["discord.voice", "discord.player"]:
+    try:
+        _lg = logging.getLogger(_logger_name)
+        _lg.addFilter(_opus_filter)
+    except:
+        pass
+
+logger.info("Opus error filter installed")
 
 
 class STTSink(discord.sinks.Sink if HAS_VOICE_RECEIVE else object):
@@ -652,7 +675,7 @@ class DiscordVoiceClient:
         task = asyncio.create_task(self._voice_listen_loop(voice_client))
         self._listen_tasks[guild_id] = task
     
-    def _on_recording_finished(self, sink: STTSink, *args):
+    async def _on_recording_finished(self, sink: STTSink, *args):
         """Called when voice recording stops.
         
         Args:
