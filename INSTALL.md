@@ -262,6 +262,48 @@ The APK will be at `build/app/outputs/flutter-apk/app-release.apk`
 
 ---
 
+## 🪟 Windows `.exe` Releases
+
+This repository now includes an automated Windows release workflow at `.github/workflows/release-windows.yml`.
+
+### Automated CI release (recommended)
+
+1. Push a version tag:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+2. The workflow builds and publishes:
+- `Demi-backend-windows-x64.zip` (PyInstaller backend `.exe`)
+- `Demi-flutter-windows-x64.zip` (Flutter Windows app `.exe` bundle)
+
+### Local backend `.exe` build (PyInstaller)
+
+```bash
+pip install -e .
+pip install pyinstaller
+
+pyinstaller --clean --noconfirm --onefile --name Demi main.py \
+  --add-data "src/core/defaults.yaml;src/core" \
+  --add-data "src/monitoring/dashboard_static;src/monitoring/dashboard_static"
+```
+
+Output: `dist/Demi.exe`
+
+### Local Flutter Windows `.exe` build
+
+```bash
+cd flutter_app
+flutter pub get
+flutter build windows --release
+```
+
+Output directory: `flutter_app/build/windows/x64/runner/Release/`
+
+---
+
 ## 🎮 First Time Setup
 
 ### 1. Test the API
