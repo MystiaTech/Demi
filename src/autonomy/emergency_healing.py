@@ -278,8 +278,9 @@ class EmergencyHealing:
                 message="No failure tracking available"
             )
         
+        from src.autonomy.code_modifier import ModificationResult
         recent_failures = self.code_modifier.get_history(
-            result_filter=self.code_modifier.ModificationResult.WRITE_FAILED,
+            result_filter=ModificationResult.WRITE_FAILED,
             limit=5
         )
         

@@ -447,6 +447,48 @@ def test_function():
         assert suggestion.priority == 'medium'
         assert suggestion.confidence == 0.8
         assert suggestion.status == ImprovementStatus.PENDING
+
+    def test_parse_review_response_multiline_and_fenced_code(self, improvement_system):
+        """Parser should keep multiline improved code and remove markdown fences."""
+        response = """FILE: src/emotion/test_module.py
+PRIORITY: high
+DESCRIPTION: Fix syntax edge cases
+CURRENT_CODE:
+def test_function():
+    pass
+IMPROVED_CODE:
+```python
+def test_function():
+    return "ok"
+```
+CONFIDENCE: 0.95
+"""
+        suggestions = improvement_system._parse_review_response(response)
+        assert len(suggestions) == 1
+        suggestion = suggestions[0]
+        assert suggestion.current_code.strip().startswith("def test_function")
+        prepared, error = improvement_system._prepare_suggested_content(suggestion)
+        assert error is None
+        assert "```" not in prepared
+        assert 'return "ok"' in prepared
+
+    def test_prepare_suggested_content_merges_snippet_with_existing_file(self, improvement_system):
+        """Snippet suggestions should expand to full file via CURRENT_CODE replacement."""
+        suggestion = ImprovementSuggestion(
+            suggestion_id="test_merge_1",
+            file_path="src/emotion/test_module.py",
+            description="Replace function body",
+            suggested_content='def test_function():\n    return "updated"',
+            current_code='def test_function():\n    pass',
+            priority="medium",
+            confidence=0.9,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        prepared, error = improvement_system._prepare_suggested_content(suggestion)
+        assert error is None
+        assert "# Test module" in prepared
+        assert 'return "updated"' in prepared
     
     @pytest.mark.asyncio
     async def test_apply_suggestion_safety_blocked(self, improvement_system):
@@ -466,6 +508,24 @@ def test_function():
         assert result == False
         assert suggestion.status == ImprovementStatus.FAILED
         assert "Safety" in suggestion.error_message
+
+    @pytest.mark.asyncio
+    async def test_apply_suggestion_path_escape_blocked(self, improvement_system):
+        """Suggestions targeting paths outside project root should be rejected."""
+        suggestion = ImprovementSuggestion(
+            suggestion_id="test_escape_1",
+            file_path="/tmp/escape.py",
+            description="Path escape",
+            suggested_content="print('x')",
+            priority="medium",
+            confidence=0.5,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        result = await improvement_system.apply_suggestion(suggestion)
+        assert result is False
+        assert suggestion.status == ImprovementStatus.FAILED
+        assert suggestion.error_message and suggestion.error_message.startswith("Path:")
 
 
 def test_integration_flow():

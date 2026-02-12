@@ -7,6 +7,7 @@ runaway self-modification or catastrophic changes.
 """
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -225,17 +226,17 @@ class SafetyGuard:
         if not self._check_quota():
             return False, "Daily/hourly modification quota exceeded"
         
-        # 4. Cooldown check
-        if not self._check_cooldown():
-            remaining = self._get_cooldown_remaining()
-            return False, f"Cooldown in effect - wait {remaining:.0f} seconds"
-        
-        # 5. Consecutive failure check
+        # 4. Consecutive failure check (before cooldown - important for testability)
         if self._consecutive_failures >= self._max_consecutive_failures:
             self._record_violation(SafetyViolation.CONSECUTIVE_FAILURES, {
                 "failures": self._consecutive_failures
             })
             return False, f"Too many consecutive failures ({self._consecutive_failures})"
+        
+        # 5. Cooldown check
+        if not self._check_cooldown():
+            remaining = self._get_cooldown_remaining()
+            return False, f"Cooldown in effect - wait {remaining:.0f} seconds"
         
         # 6. Dangerous pattern check
         violations = self._check_dangerous_patterns(new_content)

@@ -489,8 +489,16 @@ class ModificationValidator:
         else:
             overall = ValidationResult.PASSED
         
-        # Generate summary
+        # Generate summary with first failure/warning for clarity
         summary = f"Validation {overall.value}: {passed} passed, {failed} failed, {warnings} warnings"
+        if failed > 0:
+            first_failed = next((c for c in checks if c.result == ValidationResult.FAILED), None)
+            if first_failed:
+                summary = f"{summary}. First failure: {first_failed.name} - {first_failed.message}"
+        elif warnings > 0:
+            first_warning = next((c for c in checks if c.result == ValidationResult.WARNING), None)
+            if first_warning:
+                summary = f"{summary}. First warning: {first_warning.name} - {first_warning.message}"
         
         return ValidationReport(
             report_id=report_id,

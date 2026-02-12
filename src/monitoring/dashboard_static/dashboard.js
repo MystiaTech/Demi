@@ -52,7 +52,13 @@ class DemiDashboard {
             this.fetchDiscordStatus();
             this.fetchVoiceMetrics();
             this.fetchProcessingState();
+            this.fetchRambles();
+            this.fetchSelfImprovementStatus();
         }, 5000);
+
+        // Initial fetch
+        this.fetchRambles();
+        this.fetchSelfImprovementStatus();
 
         // Note: Real emotion data comes from WebSocket updates
         // No simulation needed - shows actual Demi emotional state
@@ -855,10 +861,27 @@ class DemiDashboard {
             el.textContent = date.toLocaleTimeString();
         }
 
-        // Update uptime
-        const uptimeEl = document.getElementById('uptime');
-        if (uptimeEl) {
-            uptimeEl.textContent = this.formatUptime(Date.now() - this.startTime);
+        // Update uptime - fetch from server for actual uptime
+        this.fetchSystemUptime();
+    }
+
+    async fetchSystemUptime() {
+        try {
+            const response = await fetch('/api/system/uptime');
+            if (response.ok) {
+                const data = await response.json();
+                const uptimeEl = document.getElementById('uptime');
+                if (uptimeEl && data.uptime_seconds) {
+                    uptimeEl.textContent = this.formatUptime(data.uptime_seconds * 1000);
+                }
+            }
+        } catch (error) {
+            console.debug('Failed to fetch system uptime:', error);
+            // Fallback to local uptime if server not available
+            const uptimeEl = document.getElementById('uptime');
+            if (uptimeEl && this.startTime) {
+                uptimeEl.textContent = this.formatUptime(Date.now() - this.startTime);
+            }
         }
     }
 
@@ -1235,6 +1258,148 @@ class DemiDashboard {
         if (errors) {
             errors.textContent = stt.errors || '0';
         }
+    }
+
+    async fetchRambles() {
+        try {
+            const response = await fetch('/api/system/rambles?hours=24');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateRamblesDisplay(data);
+            }
+        } catch (error) {
+            console.debug('Failed to fetch rambles:', error);
+        }
+    }
+
+    updateRamblesDisplay(data) {
+        const container = document.getElementById('rambles-container');
+        const countEl = document.getElementById('rambles-count');
+        
+        if (countEl) {
+            countEl.textContent = data.count > 0 ? `(${data.count})` : '';
+        }
+        
+        if (!container) return;
+
+        if (!data.rambles || data.rambles.length === 0) {
+            container.innerHTML = '<div class="alert-placeholder">No recent thoughts</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        data.rambles.forEach(ramble => {
+            const div = document.createElement('div');
+            div.className = 'ramble-item';
+            div.style.cssText = 'padding: 12px; margin-bottom: 8px; background: var(--bg-color); border-radius: 8px; border-left: 3px solid var(--primary-color);';
+            
+            const time = new Date(ramble.created_at).toLocaleString();
+            const triggerEmoji = {
+                'loneliness': '😔',
+                'excitement': '🤩',
+                'frustration': '😤',
+                'spontaneous': '💭'
+            }[ramble.trigger] || '💭';
+            
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">${triggerEmoji} ${ramble.trigger}</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">${time}</span>
+                </div>
+                <div style="font-size: 0.9rem; color: var(--text-color);">${ramble.content}</div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    async fetchSelfImprovementStatus() {
+        try {
+            const response = await fetch('/api/system/self-improvement');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateSelfImprovementDisplay(data);
+            }
+        } catch (error) {
+            console.debug('Failed to fetch self-improvement status:', error);
+        }
+    }
+
+    updateSelfImprovementDisplay(data) {
+        const container = document.getElementById('self-improvement-container');
+        const statusEl = document.getElementById('self-improvement-status');
+        
+        if (statusEl) {
+            if (data.enabled) {
+                statusEl.innerHTML = `<span style="color: var(--success-color);">✓ Enabled</span>`;
+            } else {
+                statusEl.innerHTML = `<span style="color: var(--text-muted);">Disabled</span>`;
+            }
+        }
+        
+        if (!container) return;
+
+        if (!data.enabled) {
+            container.innerHTML = '<div class="alert-placeholder">Self-improvement system is disabled</div>';
+            return;
+        }
+
+        let html = '';
+        
+        // Status summary
+        html += `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">`;
+        html += `<div style="text-align: center; padding: 8px; background: var(--bg-color); border-radius: 8px;">`;
+        html += `<div style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">${data.total_suggestions || 0}</div>`;
+        html += `<div style="font-size: 0.75rem; color: var(--text-muted);">Total Suggestions</div>`;
+        html += `</div>`;
+        html += `<div style="text-align: center; padding: 8px; background: var(--bg-color); border-radius: 8px;">`;
+        html += `<div style="font-size: 1.2rem; font-weight: bold; color: var(--warning-color);">${data.pending_approval || 0}</div>`;
+        html += `<div style="font-size: 0.75rem; color: var(--text-muted);">Pending Approval</div>`;
+        html += `</div>`;
+        html += `<div style="text-align: center; padding: 8px; background: var(--bg-color); border-radius: 8px;">`;
+        html += `<div style="font-size: 1.2rem; font-weight: bold; color: ${data.git_available ? 'var(--success-color)' : 'var(--danger-color)'}">${data.git_available ? '✓' : '✗'}</div>`;
+        html += `<div style="font-size: 0.75rem; color: var(--text-muted);">Git Available</div>`;
+        html += `</div>`;
+        html += `</div>`;
+
+        // Recent suggestions
+        if (data.recent_suggestions && data.recent_suggestions.length > 0) {
+            html += `<div style="margin-top: 12px;"><h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--text-muted);">Recent Code Update Attempts</h4></div>`;
+            
+            data.recent_suggestions.forEach(sugg => {
+                const statusColors = {
+                    'pending': 'var(--warning-color)',
+                    'approved': 'var(--info-color)',
+                    'committed': 'var(--success-color)',
+                    'merged': 'var(--success-color)',
+                    'failed': 'var(--danger-color)',
+                    'rejected': 'var(--danger-color)',
+                    'rolled_back': 'var(--warning-color)',
+                };
+                const color = statusColors[sugg.status] || 'var(--text-muted)';
+                
+                html += `<div style="padding: 10px; margin-bottom: 8px; background: var(--bg-color); border-radius: 8px; border-left: 3px solid ${color};">`;
+                html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">`;
+                html += `<span style="font-size: 0.8rem; font-weight: 600; color: var(--text-color);">${sugg.file_path}</span>`;
+                html += `<span style="font-size: 0.75rem; color: ${color}; text-transform: uppercase;">${sugg.status}</span>`;
+                html += `</div>`;
+                html += `<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">${sugg.description}</div>`;
+                html += `<div style="display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-muted);">`;
+                html += `<span>Priority: ${sugg.priority}</span>`;
+                html += `<span>Confidence: ${(sugg.confidence * 100).toFixed(0)}%</span>`;
+                if (sugg.created_at) {
+                    html += `<span>${new Date(sugg.created_at).toLocaleString()}</span>`;
+                }
+                html += `</div>`;
+                if (sugg.error_message) {
+                    html += `<div style="font-size: 0.75rem; color: var(--danger-color); margin-top: 4px;">Error: ${sugg.error_message}</div>`;
+                }
+                html += `</div>`;
+            });
+        } else {
+            html += '<div class="alert-placeholder">No recent code update attempts</div>';
+        }
+
+        container.innerHTML = html;
     }
 }
 

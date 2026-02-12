@@ -384,10 +384,10 @@ class SpontaneousInitiator:
         Returns:
             InitiationOpportunity if should initiate, None otherwise
         """
-        # Check cooldown (minimum 2 hours between spontaneous contacts)
+        # Check cooldown (minimum 30 minutes between spontaneous contacts)
         if self.last_initiation:
             time_since_last = datetime.now(timezone.utc) - self.last_initiation
-            if time_since_last.total_seconds() < 7200:  # 2 hours
+            if time_since_last.total_seconds() < 1800:  # 30 minutes
                 return None
 
         # Analyze conversation context

@@ -1,6 +1,6 @@
 # src/emotion/models.py
-from dataclasses import dataclass, field, asdict
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Dict
 from datetime import datetime, timezone
 
 
@@ -27,19 +27,7 @@ class EmotionalState:
 
     # Momentum tracking (how much each emotion exceeded 1.0)
     # Used by decay system to trigger cascade effects
-    momentum: Dict[str, float] = field(
-        default_factory=lambda: {
-            "loneliness": 0.0,
-            "excitement": 0.0,
-            "frustration": 0.0,
-            "jealousy": 0.0,
-            "vulnerability": 0.0,
-            "confidence": 0.0,
-            "curiosity": 0.0,
-            "affection": 0.0,
-            "defensiveness": 0.0,
-        }
-    )
+    momentum: Dict[str, float] = field(default_factory=dict)
 
     # Metadata
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -56,26 +44,17 @@ class EmotionalState:
         "affection": 0.1,
         "defensiveness": 0.1,
     }
+    _EMOTION_NAMES = tuple(_EMOTION_FLOORS.keys())
 
     def __post_init__(self):
         """Validate state after initialization."""
+        self.momentum = self._normalize_momentum(self.momentum)
         self._validate_bounds()
         self.last_updated = datetime.now(timezone.utc)
 
     def _validate_bounds(self):
         """Ensure all emotions are within [floor, 1.0]."""
-        emotion_names = [
-            "loneliness",
-            "excitement",
-            "frustration",
-            "jealousy",
-            "vulnerability",
-            "confidence",
-            "curiosity",
-            "affection",
-            "defensiveness",
-        ]
-        for name in emotion_names:
+        for name in self._EMOTION_NAMES:
             value = getattr(self, name)
             min_val = self._EMOTION_FLOORS.get(name, 0.1)
             max_val = 1.0
@@ -86,6 +65,21 @@ class EmotionalState:
                 excess = value - max_val
                 self.momentum[name] += excess
                 setattr(self, name, max_val)
+
+    def _normalize_momentum(self, momentum: Dict[str, float]) -> Dict[str, float]:
+        """Normalize momentum dict to include all tracked emotions with float values."""
+        normalized = {name: 0.0 for name in self._EMOTION_NAMES}
+        if not isinstance(momentum, dict):
+            return normalized
+
+        for name in self._EMOTION_NAMES:
+            raw = momentum.get(name, 0.0)
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = 0.0
+            normalized[name] = max(0.0, value)
+        return normalized
 
     def set_emotion(
         self, emotion_name: str, value: float, momentum_override: bool = False
@@ -105,7 +99,7 @@ class EmotionalState:
             # Allow overflow, record momentum with bounds checking
             if value > 1.0:
                 excess = value - 1.0
-                self.momentum[emotion_name] = min(self.momentum[emotion_name] + excess, 1.0)
+                self.momentum[emotion_name] = max(self.momentum[emotion_name], excess)
                 setattr(self, emotion_name, 1.0)
             else:
                 setattr(
@@ -178,17 +172,7 @@ class EmotionalState:
 
     def get_all_emotions(self) -> Dict[str, float]:
         """Return dict of all emotion names and current values."""
-        return {
-            "loneliness": self.loneliness,
-            "excitement": self.excitement,
-            "frustration": self.frustration,
-            "jealousy": self.jealousy,
-            "vulnerability": self.vulnerability,
-            "confidence": self.confidence,
-            "curiosity": self.curiosity,
-            "affection": self.affection,
-            "defensiveness": self.defensiveness,
-        }
+        return {name: getattr(self, name) for name in self._EMOTION_NAMES}
 
     def get_dominant_emotions(self, count: int = 3) -> list:
         """Return the N strongest emotions (by value)."""

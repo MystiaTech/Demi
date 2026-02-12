@@ -312,7 +312,7 @@ Make it unmistakably ME.
             
             if "too verbose" in issue_lower or "rambling" in issue_lower:
                 if RevisionStrategy.CONCISENESS not in strategies:
-                    strategies.append(RevisionStrategy.CONSISENESS)
+                    strategies.append(RevisionStrategy.CONCISENESS)
             
             if "out of character" in issue_lower or "persona" in issue_lower:
                 if RevisionStrategy.GODDESS_PERSONA not in strategies:

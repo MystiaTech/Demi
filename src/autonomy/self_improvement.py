@@ -14,6 +14,7 @@ This is the unified interface for Demi's full autonomy.
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -67,6 +68,7 @@ class ImprovementSuggestion:
     confidence: float
     created_at: datetime
     status: ImprovementStatus = ImprovementStatus.PENDING
+    current_code: str = ""
     
     # Tracking
     validation_report: Optional[ValidationReport] = None
@@ -131,7 +133,7 @@ class SelfImprovementSystem:
             project_root: Project root directory
         """
         self.conductor = conductor
-        self.project_root = Path(project_root or self._detect_project_root())
+        self.project_root = self._determine_project_root(project_root)
         self.config: SelfModificationConfig = get_autonomy_config()
         
         # Initialize all subsystems
@@ -180,6 +182,62 @@ class SelfImprovementSystem:
         """Auto-detect project root."""
         current_file = Path(__file__).resolve()
         return str(current_file.parent.parent.parent)
+
+    def _determine_project_root(self, project_root: Optional[str]) -> Path:
+        """
+        Determine usable project root with fallback strategy.
+        Priority:
+        1) Explicit constructor argument
+        2) DEMI_PROJECT_ROOT env var
+        3) Source-tree detection from module location
+        4) Current working directory (if writable)
+        """
+        candidates: List[Path] = []
+
+        if project_root:
+            candidates.append(Path(project_root))
+
+        env_root = os.getenv("DEMI_PROJECT_ROOT")
+        if env_root:
+            candidates.append(Path(env_root))
+
+        candidates.append(Path(self._detect_project_root()))
+        candidates.append(Path.cwd())
+
+        for candidate in candidates:
+            try:
+                resolved = candidate.expanduser().resolve()
+            except Exception:
+                continue
+
+            # Prefer roots that look like source workspaces.
+            has_source_layout = (resolved / "src").exists()
+            has_project_markers = any(
+                (resolved / marker).exists()
+                for marker in (".git", "pyproject.toml", "setup.py")
+            )
+            if not (has_source_layout or has_project_markers):
+                continue
+
+            if os.access(resolved, os.W_OK):
+                logger.info(f"Using self-improvement project root: {resolved}")
+                return resolved
+
+        fallback = Path.cwd().resolve()
+        logger.warning(
+            f"No writable project root candidate found; falling back to cwd: {fallback}. "
+            "Set DEMI_PROJECT_ROOT explicitly for reliable self-improvement."
+        )
+        return fallback
+
+    @property
+    def enabled(self) -> bool:
+        """Backwards-compatible access to config.enabled."""
+        return self.config.enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self.config.enabled = bool(value)
     
     # ==================== Core Improvement Workflow ====================
     
@@ -276,10 +334,23 @@ class SelfImprovementSystem:
             return False
         
         suggestion_id = suggestion.suggestion_id
-        file_path = suggestion.file_path
-        new_content = suggestion.suggested_content
-        
-        logger.info(f"Applying suggestion {suggestion_id}: {file_path}")
+        resolved_path, path_error = self._resolve_file_path(suggestion.file_path)
+        if path_error:
+            logger.error(f"Invalid target path: {path_error}")
+            suggestion.status = ImprovementStatus.FAILED
+            suggestion.error_message = f"Path: {path_error}"
+            return False
+
+        file_path = str(resolved_path)
+        relative_file_path = os.path.relpath(resolved_path, self.project_root)
+        new_content, prep_error = self._prepare_suggested_content(suggestion)
+        if prep_error:
+            logger.error(f"Suggestion preparation failed: {prep_error}")
+            suggestion.status = ImprovementStatus.FAILED
+            suggestion.error_message = f"Preparation: {prep_error}"
+            return False
+
+        logger.info(f"Applying suggestion {suggestion_id}: {relative_file_path}")
         suggestion.status = ImprovementStatus.VALIDATING
         
         # Step 1: Safety Check
@@ -302,6 +373,11 @@ class SelfImprovementSystem:
             
             if not self.validator.can_apply_safely(validation_report):
                 logger.error(f"Validation failed: {validation_report.summary}")
+                # Emit per-check details for troubleshooting
+                for check in validation_report.checks:
+                    logger.error(
+                        f"Validation check {check.name}: {check.result.value} - {check.message}"
+                    )
                 suggestion.status = ImprovementStatus.FAILED
                 suggestion.error_message = f"Validation: {validation_report.summary}"
                 return False
@@ -348,7 +424,7 @@ class SelfImprovementSystem:
         if self.config.auto_commit and branch:
             commit_success, commit_hash = self.git_manager.commit_changes(
                 message=suggestion.description,
-                files=[file_path],
+                files=[relative_file_path],
                 description=f"Self-improvement: {suggestion_id}"
             )
             
@@ -616,35 +692,76 @@ Be specific and concrete. Focus on changes you can actually implement."""
     
     def _parse_review_response(self, response: str) -> List[ImprovementSuggestion]:
         """Parse LLM review response into suggestions."""
+        response_text = self._extract_response_text(response)
         suggestions = []
         current = {}
-        
-        for line in response.split('\n'):
-            line = line.strip()
-            
-            if line.startswith('FILE:'):
+
+        collecting_field: Optional[str] = None
+
+        for raw_line in response_text.split('\n'):
+            stripped = raw_line.strip()
+
+            # Check for new suggestion header
+            if stripped.startswith('FILE:'):
+                # Save previous suggestion if complete
                 if current and 'file' in current and 'improved_code' in current:
                     suggestions.append(self._create_suggestion(current))
-                current = {'file': line.replace('FILE:', '').strip()}
-            elif line.startswith('PRIORITY:'):
-                current['priority'] = line.replace('PRIORITY:', '').strip().lower()
-            elif line.startswith('DESCRIPTION:'):
-                current['description'] = line.replace('DESCRIPTION:', '').strip()
-            elif line.startswith('CURRENT_CODE:'):
-                current['current_code'] = line.replace('CURRENT_CODE:', '').strip()
-            elif line.startswith('IMPROVED_CODE:'):
-                current['improved_code'] = line.replace('IMPROVED_CODE:', '').strip()
-            elif line.startswith('CONFIDENCE:'):
+                current = {'file': stripped.replace('FILE:', '', 1).strip()}
+                collecting_field = None
+                continue
+
+            # Check for other field headers - also ends code collection
+            if stripped.startswith('PRIORITY:'):
+                current['priority'] = stripped.replace('PRIORITY:', '', 1).strip().lower()
+                collecting_field = None
+                continue
+
+            if stripped.startswith('DESCRIPTION:'):
+                current['description'] = stripped.replace('DESCRIPTION:', '', 1).strip()
+                collecting_field = None
+                continue
+
+            if stripped.startswith('CURRENT_CODE:'):
+                current['current_code'] = stripped.replace('CURRENT_CODE:', '', 1).strip()
+                collecting_field = 'current_code'
+                continue
+
+            if stripped.startswith('IMPROVED_CODE:'):
+                current['improved_code'] = stripped.replace('IMPROVED_CODE:', '', 1).strip()
+                collecting_field = 'improved_code'
+                continue
+
+            if stripped.startswith('CONFIDENCE:'):
                 try:
-                    current['confidence'] = float(line.replace('CONFIDENCE:', '').strip())
+                    current['confidence'] = float(stripped.replace('CONFIDENCE:', '', 1).strip())
                 except ValueError:
                     current['confidence'] = 0.5
-            elif current.get('improved_code') is not None and line:
-                # Continue collecting improved code
-                current['improved_code'] += '\n' + line
+                collecting_field = None
+                continue
+            
+            # Check for other headers that might end code collection
+            # This catches cases where the LLM uses different header formats
+            if stripped.endswith(':') and not collecting_field:
+                collecting_field = None
+                continue
+
+            if collecting_field in ('current_code', 'improved_code'):
+                existing = current.get(collecting_field, '')
+                current[collecting_field] = (
+                    f"{existing}\n{raw_line}" if existing else raw_line
+                )
         
+        # Save last suggestion if complete
         if current and 'file' in current and 'improved_code' in current:
             suggestions.append(self._create_suggestion(current))
+        
+        # Post-process: clean up any suggestions that might have issues
+        for suggestion in suggestions:
+            # Strip code fences from parsed content
+            if suggestion.current_code:
+                suggestion.current_code = self._strip_code_fences(suggestion.current_code)
+            if suggestion.suggested_content:
+                suggestion.suggested_content = self._strip_code_fences(suggestion.suggested_content)
         
         return suggestions
     
@@ -657,7 +774,117 @@ Be specific and concrete. Focus on changes you can actually implement."""
             file_path=data.get('file', 'unknown'),
             description=data.get('description', 'No description'),
             suggested_content=data.get('improved_code', ''),
+            current_code=data.get('current_code', ''),
             priority=data.get('priority', 'medium'),
             confidence=data.get('confidence', 0.5),
             created_at=datetime.now(timezone.utc)
         )
+
+    def _extract_response_text(self, response: Any) -> str:
+        """Extract string body from inference response payloads."""
+        if isinstance(response, str):
+            return response
+        if isinstance(response, dict):
+            content = response.get("content")
+            if isinstance(content, str):
+                return content
+            return str(content or "")
+        return str(response or "")
+
+    def _prepare_suggested_content(
+        self, suggestion: ImprovementSuggestion
+    ) -> tuple[str, Optional[str]]:
+        """
+        Sanitize and optionally expand suggestion content to full file content.
+        Returns (content, error). Error is None when preparation succeeded.
+        """
+        sanitized = self._strip_code_fences(suggestion.suggested_content)
+        if not sanitized.strip():
+            return "", "Empty suggested content"
+
+        # Reject obvious parser leaks early.
+        if sanitized.lstrip().startswith(("FILE:", "PRIORITY:", "DESCRIPTION:")):
+            return "", "Suggestion content still contains metadata headers"
+
+        file_path = suggestion.file_path
+        if file_path.endswith(".py"):
+            merged = self._merge_snippet_with_existing_file(
+                file_path=file_path,
+                current_code=suggestion.current_code,
+                improved_code=sanitized,
+            )
+            if merged is not None:
+                sanitized = merged
+
+        # Persist sanitized content for traceability.
+        suggestion.suggested_content = sanitized
+        return sanitized, None
+
+    def _strip_code_fences(self, content: str) -> str:
+        """Strip wrapping markdown code fences from generated content."""
+        if not content:
+            return ""
+
+        normalized = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+        
+        # Try to match code blocks with optional language specifier
+        # Handle both ```python\ncode\n``` and ```\ncode\n```
+        fence_pattern = re.compile(r"^```[a-zA-Z0-9_-]*\n?([\s\S]*?)\n?```$", re.MULTILINE)
+        match = fence_pattern.match(normalized)
+        if match:
+            return match.group(1).strip()
+
+        # If fences exist but not wrapped perfectly, remove fence lines only.
+        lines = []
+        for line in normalized.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                continue
+            lines.append(line)
+        return "\n".join(lines).strip()
+
+    def _merge_snippet_with_existing_file(
+        self,
+        file_path: str,
+        current_code: str,
+        improved_code: str,
+    ) -> Optional[str]:
+        """
+        If CURRENT_CODE is provided and matches file content, apply replacement.
+        Returns full file content on success, otherwise None.
+        """
+        current_code = self._strip_code_fences(current_code)
+        if not current_code.strip():
+            return None
+
+        resolved_path, error = self._resolve_file_path(file_path)
+        if error or not resolved_path.exists():
+            return None
+
+        try:
+            original = resolved_path.read_text(encoding="utf-8")
+        except Exception:
+            return None
+
+        if current_code not in original:
+            return None
+
+        updated = original.replace(current_code, improved_code, 1)
+        logger.info(f"Expanded snippet to full-file update using CURRENT_CODE: {file_path}")
+        return updated
+
+    def _resolve_file_path(self, file_path: str) -> tuple[Optional[Path], Optional[str]]:
+        """Resolve file path relative to project root and ensure it stays inside root."""
+        if not file_path or not isinstance(file_path, str):
+            return None, "Missing file path"
+
+        candidate = Path(file_path)
+        resolved = candidate.resolve() if candidate.is_absolute() else (self.project_root / candidate).resolve()
+        root = self.project_root.resolve()
+
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return None, f"Path escapes project root: {file_path}"
+
+        return resolved, None

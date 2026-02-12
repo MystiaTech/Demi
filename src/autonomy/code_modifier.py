@@ -8,6 +8,7 @@ and comprehensive audit logging. This is the foundation of Demi's autonomy.
 import ast
 import hashlib
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -213,6 +214,52 @@ class SafeCodeModifier:
     def _compute_hash(self, content: str) -> str:
         """Compute SHA256 hash of content."""
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+    def _normalize_generated_content(self, content: str) -> str:
+        """
+        Normalize LLM-generated content before validation/write.
+        Removes wrapping markdown fences and normalizes newlines.
+        """
+        if not content:
+            return ""
+
+        normalized = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+        
+        # Try to match code blocks with optional language specifier
+        # Handle both ```python\ncode\n``` and ```\ncode\n``` and cases without trailing newline
+        fence_pattern = re.compile(r"^```[a-zA-Z0-9_-]*\n?([\s\S]*?)\n?```$", re.MULTILINE)
+        match = fence_pattern.match(normalized)
+        if match:
+            normalized = match.group(1).strip()
+        else:
+            # If fences exist but not wrapped perfectly, remove fence lines only.
+            lines = []
+            for line in normalized.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith("```"):
+                    continue
+                lines.append(line)
+            normalized = "\n".join(lines).strip()
+        
+        # Final safety check: reject obvious metadata headers that leaked through
+        first_line = normalized.split('\n')[0] if normalized else ""
+        if first_line.startswith(("FILE:", "PRIORITY:", "DESCRIPTION:", "CURRENT_CODE:", "IMPROVED_CODE:", "CONFIDENCE:")):
+            # Try to extract code after headers if they exist
+            lines = normalized.split('\n')
+            code_lines = []
+            in_code = False
+            for line in lines:
+                stripped = line.strip()
+                # Skip header lines
+                if stripped.startswith(("FILE:", "PRIORITY:", "DESCRIPTION:", "CURRENT_CODE:", "IMPROVED_CODE:", "CONFIDENCE:")):
+                    in_code = True
+                    continue
+                if in_code or not stripped:
+                    code_lines.append(line)
+            if code_lines:
+                normalized = '\n'.join(code_lines).strip()
+        
+        return normalized
     
     async def modify_file(
         self,
@@ -246,6 +293,9 @@ class SafeCodeModifier:
         rel_path = os.path.relpath(abs_path, self.project_root)
         
         logger.info(f"Modification attempt [{attempt_id}]: {rel_path}")
+
+        # Normalize generated content to avoid markdown/prompt wrapper leakage.
+        new_content = self._normalize_generated_content(new_content)
         
         # Read original content
         original_content = ""

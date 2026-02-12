@@ -152,7 +152,7 @@ class AutonomyCoordinator:
             )
             
             # Start self-improvement task if enabled
-            if self.self_improvement.enabled:
+            if self.self_improvement.config.enabled:
                 self.background_tasks["self_improvement"] = asyncio.create_task(
                     self._run_self_improvement()
                 )

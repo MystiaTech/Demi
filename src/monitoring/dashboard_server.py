@@ -403,6 +403,121 @@ class DashboardServer:
                 logger.error("Processing state endpoint error", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @self.app.get("/api/system/uptime")
+        async def get_system_uptime():
+            """Get actual system uptime from conductor/orchestrator."""
+            try:
+                uptime_seconds = 0
+                start_time_iso = None
+                
+                # Try to get from conductor
+                try:
+                    from src.conductor.orchestrator import get_conductor_instance
+                    conductor = get_conductor_instance()
+                    if conductor:
+                        uptime_seconds = conductor.get_uptime()
+                        if hasattr(conductor, '_startup_time') and conductor._startup_time:
+                            start_time_iso = datetime.fromtimestamp(conductor._startup_time).isoformat()
+                except Exception as e:
+                    logger.debug("Could not get uptime from conductor", error=str(e))
+                
+                # Fallback to dashboard uptime if conductor not available
+                if uptime_seconds == 0:
+                    from src.monitoring.dashboard import Dashboard
+                    # The dashboard instance might be tracked elsewhere
+                    # For now, return 0 if conductor not available
+                    pass
+                
+                return {
+                    "uptime_seconds": uptime_seconds,
+                    "start_time": start_time_iso,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error("Uptime endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/system/rambles")
+        async def get_recent_rambles(hours: int = 24):
+            """Get recent ramble/thought history."""
+            try:
+                from src.models.rambles import RambleStore
+                from src.core.database import get_db_path
+                
+                db_path = get_db_path()
+                store = RambleStore(db_path)
+                
+                rambles = await store.get_recent_rambles(hours)
+                
+                return {
+                    "rambles": [
+                        {
+                            "id": r.ramble_id,
+                            "content": r.content[:200] + "..." if len(r.content) > 200 else r.content,
+                            "trigger": r.trigger,
+                            "created_at": r.created_at.isoformat(),
+                            "emotion_state": r.emotion_state,
+                        }
+                        for r in rambles
+                    ],
+                    "count": len(rambles),
+                    "hours": hours,
+                }
+            except Exception as e:
+                logger.debug("Could not get rambles", error=str(e))
+                return {"rambles": [], "count": 0, "hours": hours, "error": str(e)}
+
+        @self.app.get("/api/system/self-improvement")
+        async def get_self_improvement_status():
+            """Get self-improvement system status and recent attempts."""
+            try:
+                # Try to get from autonomy coordinator
+                try:
+                    from src.conductor.orchestrator import get_conductor_instance
+                    conductor = get_conductor_instance()
+                    if conductor and hasattr(conductor, 'autonomy_coordinator'):
+                        coordinator = conductor.autonomy_coordinator
+                        if coordinator and hasattr(coordinator, 'self_improvement'):
+                            si = coordinator.self_improvement
+                            status = si.get_status()
+                            
+                            # Get recent suggestions
+                            recent = si.get_suggestion_history(limit=10)
+                            
+                            return {
+                                "enabled": status.get("enabled", False),
+                                "total_suggestions": status.get("total_suggestions", 0),
+                                "pending_approval": status.get("pending_approval", 0),
+                                "by_status": status.get("by_status", {}),
+                                "recent_suggestions": [
+                                    {
+                                        "id": s.suggestion_id,
+                                        "file_path": s.file_path,
+                                        "description": s.description[:100] + "..." if len(s.description) > 100 else s.description,
+                                        "priority": s.priority,
+                                        "status": s.status.value,
+                                        "confidence": s.confidence,
+                                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                                        "applied_at": s.applied_at.isoformat() if s.applied_at else None,
+                                        "error_message": s.error_message,
+                                    }
+                                    for s in recent
+                                ],
+                                "safety_level": status.get("safety_level", "normal"),
+                                "git_available": status.get("git_available", False),
+                            }
+                except Exception as e:
+                    logger.debug("Could not get self-improvement status", error=str(e))
+                
+                return {
+                    "enabled": False,
+                    "message": "Self-improvement system not available",
+                    "recent_suggestions": [],
+                }
+            except Exception as e:
+                logger.error("Self-improvement endpoint error", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
         @self.app.get("/api/metrics/platforms")
         async def get_platforms_metrics():
             """Get platform interaction statistics."""

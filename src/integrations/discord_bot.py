@@ -6,16 +6,26 @@ Includes voice channel integration for voice commands and responses.
 
 import os
 import sys
+import math
 import asyncio
 import uuid
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 
 import discord
-from discord import Bot  # py-cord uses Bot directly
+try:
+    from discord import Bot  # py-cord
+except ImportError:  # pragma: no cover - compatibility fallback for discord.py
+    from discord.ext.commands import Bot
 from discord.ext import tasks
-from discord.commands import slash_command, Option, OptionChoice
-from discord.commands.permissions import default_permissions
+try:
+    from discord.commands.permissions import default_permissions
+except ModuleNotFoundError:  # pragma: no cover - compatibility fallback for discord.py
+    def default_permissions(**kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
 
 from src.platforms.base import BasePlatform, PluginHealth
 from src.core.logger import get_logger
@@ -38,7 +48,7 @@ except ImportError:
 from src.integrations.emotion_colors import EMOTION_COLORS, get_emotion_color
 
 
-def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Color]:
+def get_dominant_emotion(emotion_state: Optional[Dict[str, Any]]) -> tuple[str, discord.Color]:
     """
     Given emotion_state dict with emotion dimensions, find dominant emotion.
     
@@ -48,17 +58,56 @@ def get_dominant_emotion(emotion_state: Optional[Dict]) -> tuple[str, discord.Co
     Returns:
         Tuple of (emotion_name, discord_color)
     """
+    if not isinstance(emotion_state, dict) or not emotion_state:
+        return "neutral", discord.Color.blurple()
+
+    valid_emotions: Dict[str, float] = {}
+    for emotion_name, raw_value in emotion_state.items():
+        if not isinstance(emotion_name, str):
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(value):
+            continue
+        valid_emotions[emotion_name] = value
+
+    if not valid_emotions:
+        return "neutral", discord.Color.blurple()
+
+    emotion_name, _ = max(valid_emotions.items(), key=lambda x: x[1])
+    return emotion_name, get_emotion_color(emotion_name)
+
+
+def should_generate_ramble(
+    emotion_state: Optional[Dict[str, float]],
+    last_ramble_time: Optional[datetime],
+    min_interval_minutes: int = 60,
+) -> tuple[bool, Optional[str]]:
+    """Determine whether a ramble should be generated from current emotion state."""
     if not emotion_state:
-        return "confidence", EMOTION_COLORS["confidence"]  # Default
-    
-    # Find the emotion with highest value
-    dominant = max(emotion_state.items(), key=lambda x: x[1])
-    emotion_name = dominant[0]
-    
-    # Get color, default to purple if unknown
-    color = get_emotion_color(emotion_name)
-    
-    return emotion_name, color
+        return False, None
+
+    trigger: Optional[str] = None
+    if emotion_state.get("loneliness", 0) > 0.7:
+        trigger = "loneliness"
+    elif emotion_state.get("excitement", 0) > 0.8:
+        trigger = "excitement"
+    elif emotion_state.get("frustration", 0) > 0.6:
+        trigger = "frustration"
+
+    if not trigger:
+        return False, None
+
+    if last_ramble_time is not None:
+        elapsed_minutes = (
+            datetime.now(timezone.utc) - last_ramble_time
+        ).total_seconds() / 60.0
+        if elapsed_minutes < min_interval_minutes:
+            return False, None
+
+    return True, trigger
 
 
 def format_response_as_embed(response, persona_name="Demi") -> discord.Embed:
@@ -81,13 +130,31 @@ def format_response_as_embed(response, persona_name="Demi") -> discord.Embed:
     # Get dominant emotion for color
     dominant_emotion, color = get_dominant_emotion(emotion_state)
     
+    if len(content) > 2000:
+        content = content[:2000]
+
     # Create embed
     embed = discord.Embed(
         description=content,
         color=color,
         timestamp=datetime.now(timezone.utc)
     )
+    embed.title = "Demi's Response"
     embed.set_author(name=persona_name)
+
+    if isinstance(emotion_state, dict):
+        top = sorted(
+            [
+                (name, value)
+                for name, value in emotion_state.items()
+                if isinstance(value, (int, float)) and value > 0.3
+            ],
+            key=lambda item: item[1],
+            reverse=True,
+        )[:3]
+        if top:
+            details = "\n".join(f"{name}: {value:.2f}" for name, value in top)
+            embed.add_field(name="Emotional Context", value=details, inline=False)
     
     return embed
 
@@ -149,28 +216,9 @@ class RambleTask:
             emotion_state_obj = emotion_persist.load_latest_state()
             emotion_state = emotion_state_obj.get_all_emotions() if emotion_state_obj else {}
             
-            # Determine if we should ramble based on emotions
-            should_ramble = False
-            trigger = None
-            
-            # High loneliness triggers ramble
-            if emotion_state.get("loneliness", 0) > 0.6:
-                should_ramble = True
-                trigger = "loneliness"
-            # High excitement triggers ramble
-            elif emotion_state.get("excitement", 0) > 0.7:
-                should_ramble = True
-                trigger = "excitement"
-            # Frustration might trigger a vent
-            elif emotion_state.get("frustration", 0) > 0.6:
-                should_ramble = True
-                trigger = "frustration"
-            
-            # Check cooldown (minimum 10 minutes between rambles)
-            if should_ramble and self.last_ramble_time:
-                minutes_since = (datetime.now(timezone.utc) - self.last_ramble_time).total_seconds() / 60
-                if minutes_since < 10:
-                    should_ramble = False
+            should_ramble, trigger = should_generate_ramble(
+                emotion_state, self.last_ramble_time, min_interval_minutes=60
+            )
             
             if should_ramble:
                 await self._generate_ramble(trigger, emotion_state_obj, emotion_state)
@@ -430,8 +478,8 @@ class DiscordBot(BasePlatform):
                 else:
                     self.logger.info("Voice features disabled (set DISCORD_VOICE_ENABLED=true to enable)")
 
-            # Initialize ramble task if channel configured
-            if self.ramble_channel_id and conductor:
+            # Initialize ramble task if channel and dependencies are available
+            if self.ramble_channel_id and self.bot is not None and conductor is not None:
                 try:
                     channel_id = int(self.ramble_channel_id)
                     self.ramble_task = RambleTask(
@@ -444,6 +492,12 @@ class DiscordBot(BasePlatform):
                     self.logger.error(f"Invalid DISCORD_RAMBLE_CHANNEL_ID: {self.ramble_channel_id}")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize ramble task: {e}")
+            elif self.ramble_channel_id:
+                self.logger.warning(
+                    "Ramble task not started: bot or conductor unavailable",
+                    bot_initialized=self.bot is not None,
+                    conductor_available=conductor is not None,
+                )
 
             # Log channel configuration
             if self.ramble_channel_id:
@@ -470,7 +524,13 @@ class DiscordBot(BasePlatform):
 
     def _register_voice_commands(self):
         """Register slash commands for voice and utilities using pycord syntax."""
-        from discord.commands import Option, OptionChoice
+        try:
+            from discord.commands import Option, OptionChoice
+        except ModuleNotFoundError:
+            self.logger.warning(
+                "discord.commands not available; skipping py-cord slash command registration"
+            )
+            return
         
         # Define choice options
         voice_mode_choices = [

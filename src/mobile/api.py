@@ -469,26 +469,39 @@ class MobileAPIServer:
                                 }
                             )
 
+                    except WebSocketDisconnect:
+                        logger.info(
+                            "Mobile WebSocket disconnected during message handling",
+                            user_id=user_id,
+                        )
+                        break
                     except Exception as e:
                         logger.error(
                             f"Message processing failed: {e}", user_id=user_id
                         )
-                        await websocket.send_json(
-                            {
-                                "type": "error",
-                                "content": "Error processing message",
-                                "timestamp": datetime.now().isoformat(),
-                            }
-                        )
+                        try:
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "content": "Error processing message",
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
+                        except WebSocketDisconnect:
+                            logger.info(
+                                "Mobile WebSocket disconnected before error delivery",
+                                user_id=user_id,
+                            )
+                            break
 
             except WebSocketDisconnect:
                 logger.info("Mobile WebSocket disconnected", user_id=user_id)
-                if user_id in self.websocket_connections:
-                    del self.websocket_connections[user_id]
+                self.websocket_connections.pop(user_id, None)
             except Exception as e:
                 logger.error(f"WebSocket error: {e}", user_id=user_id)
-                if user_id in self.websocket_connections:
-                    del self.websocket_connections[user_id]
+                self.websocket_connections.pop(user_id, None)
+            finally:
+                self.websocket_connections.pop(user_id, None)
 
     async def _generate_audio_with_lipsync(
         self,
